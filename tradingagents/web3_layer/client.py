@@ -220,6 +220,20 @@ RISK_ROUTER_ABI = [
 VALIDATION_REGISTRY_ABI = [
     {
         "type": "function",
+        "name": "postAttestation",
+        "inputs": [
+            {"name": "agentId", "type": "uint256"},
+            {"name": "checkpointHash", "type": "bytes32"},
+            {"name": "score", "type": "uint8"},
+            {"name": "proofType", "type": "uint8"},
+            {"name": "proof", "type": "bytes"},
+            {"name": "notes", "type": "string"}
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
         "name": "postEIP712Attestation",
         "inputs": [
             {"name": "agentId", "type": "uint256"},
@@ -506,18 +520,27 @@ class HackathonWeb3Client:
         if score < 0 or score > 100:
             raise ValueError("score must be in [0, 100]")
 
-        sender_account = self.agent_account
+        sender_account = self.operator_account
 
         logger.info(
-            "Submitting ValidationRegistry checkpoint from agent wallet %s",
+            "Submitting ValidationRegistry checkpoint from operator wallet %s",
             sender_account.address,
         )
 
+        # ValidationRegistry.ProofType.EIP712 == 1
+        proof_type_eip712 = 1
+        empty_proof = b""
+        normalized_hash = (
+            checkpoint_hash if str(checkpoint_hash).startswith("0x") else f"0x{checkpoint_hash}"
+        )
+
         return self._send_contract_tx(
-            self.validation_registry.functions.postEIP712Attestation(
+            self.validation_registry.functions.postAttestation(
                 int(agent_id),
-                checkpoint_hash if str(checkpoint_hash).startswith("0x") else f"0x{checkpoint_hash}",
+                normalized_hash,
                 int(score),
+                int(proof_type_eip712),
+                empty_proof,
                 notes,
             ),
             sender_account,

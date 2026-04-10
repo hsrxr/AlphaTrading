@@ -1,0 +1,33 @@
+Title: ETH, SOL, DOGE slide as Bitcoin fails to break $73,000 for the third time since the ceasefire
+Source: CoinDesk
+URL: https://www.coindesk.com/markets/2026/04/10/eth-sol-doge-slide-as-bitcoin-fails-to-break-usd73-000-for-the-third-time-since-the-ceasefire
+
+Bitcoin pulled back to $71,843 on Friday after a third attempt to breach $73,000 was met with selling on Thursday, a level that has now rejected the price on every rally since the Iran conflict began in late February.
+
+The retreat is modest. Bitcoin is up 7.9% on the week, its strongest weekly performance of the war so far, holding above the 50-day moving average which has turned upward for the first time since the conflict started. Ether held at $2,189, up 6.6% on the week. Solana's SOL gained 5.1% to $83.09. XRP added 2.8% to $1.34. Dogecoin climbed 2.4% to $0.092. The entire top 10 is green on the weekly chart for the first time in over a month.
+
+But $73,000 is seemingly a wall. The level has capped bitcoin three times since the ceasefire was announced on Tuesday — each attempt producing a rally that faded within hours. The pattern is identical to the pre-ceasefire range, just shifted higher. Instead of grinding between $65,000 and $73,000, bitcoin is now grinding between $70,000 and $73,000.
+
+"We will need to wait for the price to rise above $75,000 before we can speak of the market entering an active bullish phase," said Alex Kuptsikevich, FxPro's chief market analyst, in a note to CoinDesk. He added that bitcoin remains above the 50-day moving average, reinforcing short-term bullish sentiment, but flagged the repeated rejection at $73,000 as the barrier that needs to break.
+
+Galaxy Digital CEO Mike Novogratz set the bar higher, saying the key conditions for bitcoin to resume its uptrend are consolidation above $74,000 followed by a break above $80,000. "Breaking through these levels could trigger a new wave of optimism and restore the uptrend," he said.
+
+The ceasefire that triggered Tuesday's rally is already fraying. Iran accused the U.S. of breaching three clauses of the agreement.
+
+The Strait of Hormuz remains only partially reopened with "technical limitations." Oil rebounded from its 15% single-day crash to trade back above $97.
+
+Ether's setup is similarly range-bound. The token pulled back 4% from its Wednesday peak to $2,189, which Kuptsikevich described as market noise within a $2,000 to $2,400 consolidation zone.
+
+"A breakout beyond this calm consolidation zone would signal the start of a directional move," he said.
+
+Outside of majors, Algorand dropped 11.4%, Aptos fell 6.1%, and Polkadot lost 6.1%, marking an altcoin divergence that typically appears when traders are rotating rather than entering fresh capital.
+
+The Fear and Greed Index climbed out of single digits for the first time in over a month, meanwhile.
+
+If the ceasefire survives through the weekend and the Strait opens further, $73,000 gets its fourth test with momentum behind it. However, Tehran's grievances escalate or Trump's rhetoric shifts, the pullback toward $68,000 to $70,000 is the path of least resistance.
+
+Most crypto privacy models weaken as blockchain data grows. Encryption-based models like Zcash strengthen. CoinDesk Research maps the five privacy approaches and examines the widening gap.
+
+As blockchain adoption scales, the metadata available to machine learning models scales with it. Obfuscation-based privacy approaches are structurally degrading as a result. This report provides a comprehensive comparison of all five major crypto privacy architectures and a framework for evaluating which models remain durable as AI capabilities improve.
+
+Strong volume pushed price above $1.34, though weak fundamentals and overhead resistance continue to cap follow-through.

@@ -1,0 +1,39 @@
+Title: Japan approves bill to classify crypto as financial instruments
+Source: Cointelegraph
+URL: https://cointelegraph.com/news/japan-approves-bill-classify-cryptocurrencies-financial-instruments?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound
+
+The Japanese Cabinet reclassified crypto as a financial instrument and will enforce insider trading bans and annual disclosure mandates for issuers.
+
+Cointelegraph in your social feed
+
+The Japanese government amended the Financial Instruments and Exchange Act on Friday to classify crypto assets as financial instruments.
+
+The amendment also bansinsider tradingand other activities that involve buying and selling based on undisclosed information, Nikkeireported.
+
+The amended act will also now require cryptocurrency “issuers” to be more transparent and disclose information once a year.
+
+Japan’s Financial Services Agency has previously regulated crypto assets under the Payment and Settlement Act, citing their potential use as a means of payment. However, the regulations and classifications have been updated to reflect increasing institutional investment in the asset class.
+
+By reclassifying crypto as a financial instrument rather than just a payment method, Japan is moving crypto out of the experimental payments category and into the same league as its stock market.
+
+“We will expand the supply of growth capital in response to changes in financial and capital markets, and ensure market fairness, transparency, and investor protection,” said Finance Minister Satsuki Katayama at a press conference after the Cabinet meeting.
+
+Fines and sentences for unregistered crypto exchanges have also increased under the amendment.
+
+Related:Prediction markets are testing legal limits in strict Asian markets
+
+Japansignaledthat it was bringing crypto under the same umbrella as traditional finance in January when Katayama said, “To ensure citizens benefit from digital and blockchain-based assets, the role of exchanges and market infrastructure will be essential.”
+
+The governmentbacked plansin December to significantly reduce Japan’s maximum tax rate on crypto profits, with a flat rate of 20% across the board.
+
+Japan is also planning to legalize crypto exchange-traded funds (ETFs) by 2028, marking a major shift toward mainstream crypto adoption,accordingto a January report.
+
+Major financial groups, including Nomura Holdings and SBI Holdings, are among the first companies expected todevelop crypto-linked exchange-traded products.
+
+Asia Express:Phantom Bitcoin checks, China tracks tax on blockchain
+
+Cointelegraph covers fintech, blockchain and Bitcoin bringing you the latest crypto news and analyses on the future of money.
+
+Cointelegraph is committed to providing independent, high-quality journalism across the crypto, blockchain, AI, and fintech industries. To support open access to our website and sustain editorial operations, certain commercial or partner references may appear on our site. These arrangements help maintain an accessible platform and do not result in additional costs to readers.
+
+All news, reviews, and analysis are produced with full journalistic independence and integrity. For more details on our standards and processes, please read ourEditorial Policy.

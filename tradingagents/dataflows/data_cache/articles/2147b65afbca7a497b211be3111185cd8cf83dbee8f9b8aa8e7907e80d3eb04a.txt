@@ -1,0 +1,53 @@
+Title: ETH valuation metric hits level not seen since 2022: Is rally to $2.5K next?
+Source: Cointelegraph
+URL: https://cointelegraph.com/news/eth-valuation-metric-hits-level-not-seen-since-2022-is-rally-to-dollar2-5k-next?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound
+
+A rare signal from an ETH price indicator suggests Ether is undervalued, while demand in spot and futures markets hints at a rally to $2,500.
+
+Cointelegraph in your social feed
+
+Ether (ETH) may be on the path to retesting $2,500 if the current rally above $2,150 and the bullish spot and futures market volumes pushing prices higher are sustained.
+
+Ether is also supported by a key macro indicator that places the altcoin in a rare undervaluation zone not seen since 2022. The data points to fading selling pressure and the early stages of an accumulation process for Ether.
+
+Ether’s daily chart shows bulls leading the charge after a 6.33% rally pushed the price above the $2,150 resistance. ETH now eyes a retest of its March highs near $2,385, with further upside toward the $2,475–$2,635 fair-value gap acting as a price magnet for bulls.
+
+Repeat retests of $2,150 over the past two months suggest weakening resistance, as buyers continue stepping in at higher levels.
+
+Charts show ETH market structure improving and the current volumes being largely spot market driven. On the four-hour chart, ETH maintains higher lows while attempting to break into the $2,250–$2,300 range.
+
+The aggregated spot cumulative volume delta (CVD) has remained elevated in April at 184,500 ETH, reflecting sustained spot demand.
+
+The futures CVD has also trended gradually upward to 4.36 million ETH, suggesting that derivatives traders are beginning to support, rather than lead, the move.
+
+The funding rate remains positive at 0.0052, indicating a long bias, and the open interest near 4.75 million ETH is still range-bound, signaling limited leverage.
+
+Data shows ETH is in a controlled accumulation phase, marginally led by spot demand, though a stronger breakout would likely require an expansion in futures positioning.
+
+Related: Ethereum stablecoin supply hits $180B all-time high: Token Terminal
+
+Ether may be nearing a macro bottom according to theCapriole Macro Index Oscillatorwith a reading at -2.42. This puts Ether in a rare undervalued zone historically linked with capitulation and trend reversals.
+
+The indicator tracks investment behavior, cycle positioning, and onchain data, with deeply negative values often signaling seller exhaustion.
+
+Previous signals highlight the metric’s reliability. In June to July 2022, ETH bottomed near $1,000–$1,200 when the indicator fell to -2.2. In October to November 2023, a drop to -1 aligned with ETH’s price breaking out after a drop to $1,500.
+
+In April 2025, another negative reading marked a local bottom near $1,500, setting the stage for a rally above $4,000.
+
+The current setup mirrors prior capitulation phases. ETH has fallen from highs near $4,800 to $2,100, while the oscillator sits near cycle lows.
+
+With ETH now in a rare undervalued zone, the downside risk appears limited relative to the upside potential. However, the confirmation would come with a reclaim of the $2,400–$2,500 level and a move back toward zero for the macro indicator.
+
+Analyst crypto sunmoonnotedthat the ETH taker buy/sell ratio has been trending upward for four to five months.
+
+Combined with the current drawdown, the structure resembles the setup preceding the April to May 2025 rally, suggesting a similar recovery phase may be forming.
+
+Related: Three reasons why Ether traders expect ETH to hold above $1.8K
+
+This article is produced in accordance with Cointelegraph's Editorial Policy and is intended for informational purposes only. It does not constitute investment advice or recommendations. All investments and trades carry risk; readers are encouraged to conduct independent research before making any decisions. Cointelegraph makes no guarantees regarding the accuracy or completeness of the information presented, including forward-looking statements, and will not be liable for any loss or damage arising from reliance on this content.
+
+Cointelegraph covers fintech, blockchain and Bitcoin bringing you the latest crypto news and analyses on the future of money.
+
+Cointelegraph is committed to providing independent, high-quality journalism across the crypto, blockchain, AI, and fintech industries. To support open access to our website and sustain editorial operations, certain commercial or partner references may appear on our site. These arrangements help maintain an accessible platform and do not result in additional costs to readers.
+
+All news, reviews, and analysis are produced with full journalistic independence and integrity. For more details on our standards and processes, please read ourEditorial Policy.

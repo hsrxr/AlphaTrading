@@ -8,11 +8,11 @@ to the Sepolia hackathon contracts after each agent decision.
 import json
 import logging
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from tradingagents.web3_layer.client import HackathonWeb3Client
-from tradingagents.virtual_ledger import create_virtual_ledger
 from tradingagents.virtual_ledger import create_virtual_ledger
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,6 @@ class OnChainSubmissionResult:
     approval_event: Optional[Dict[str, Any]] = None
     rejection_event: Optional[Dict[str, Any]] = None
     rejection_reason: Optional[str] = None
-    field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)  # Additional info about the submission
 
 
@@ -119,6 +118,8 @@ class TradeIntentAdapter:
 
 class OnChainIntegrator:
     """Orchestrates TradeIntent and Checkpoint submission to chain."""
+
+    FIXED_CHECKPOINT_SCORE = 100
     
     def __init__(
         self,
@@ -129,6 +130,7 @@ class OnChainIntegrator:
         enable_simulation: bool = True,
         submit_hold_decisions: bool = False,
         checkpoint_notes_prefix: str = "TradingAgent decision:",
+        checkpoint_log_file: str = "checkpoints.jsonl",
         ledger_path: str = "./trade_memory/virtual_ledger.json",
     ):
         """Initialize the on-chain integrator.
@@ -141,6 +143,7 @@ class OnChainIntegrator:
             enable_simulation: If True, simulate intents before submission
             submit_hold_decisions: If True, submit HOLD actions to RiskRouter
             checkpoint_notes_prefix: Prefix for checkpoint notes
+            checkpoint_log_file: Local JSONL file for checkpoint audit trail
             ledger_path: Path to virtual ledger JSON file
         """
         self.client = web3_client
@@ -150,6 +153,7 @@ class OnChainIntegrator:
         self.enable_simulation = enable_simulation
         self.submit_hold_decisions = bool(submit_hold_decisions)
         self.checkpoint_notes_prefix = checkpoint_notes_prefix
+        self.checkpoint_log_file = checkpoint_log_file
         self.ledger = create_virtual_ledger(ledger_path=ledger_path)
 
     @staticmethod
@@ -168,6 +172,7 @@ class OnChainIntegrator:
         final_decision_json: str,
         current_price_usd_scaled: int = 0,
         trade_date: Optional[str] = None,
+        full_reasoning_jsonl_file: Optional[str] = None,
     ) -> OnChainSubmissionResult:
         """Submit an agent decision to the on-chain contracts.
         
@@ -182,6 +187,8 @@ class OnChainIntegrator:
             final_decision_json: JSON string from TradingAgentsGraph.analyze()
             current_price_usd_scaled: Current price in cents (used for checkpoint)
             trade_date: Optional trade date for logging
+            full_reasoning_jsonl_file: Optional path to full_trace_*.jsonl; when present,
+                its full content is used as the checkpoint reasoning-hash input.
         
         Returns:
             OnChainSubmissionResult with submission status and hashes
@@ -287,6 +294,57 @@ class OnChainIntegrator:
             
             result.metadata["trade_intent"] = intent
             result.metadata["intent_nonce"] = nonce
+
+            # Post ValidationRegistry checkpoint after RiskRouter submission.
+            try:
+                checkpoint_notes = f"{self.checkpoint_notes_prefix} {str(reasoning).strip()}".strip()
+                checkpoint_hash_input = str(reasoning)
+                if full_reasoning_jsonl_file:
+                    trace_path = Path(full_reasoning_jsonl_file)
+                    if trace_path.exists():
+                        checkpoint_hash_input = trace_path.read_text(encoding="utf-8")
+                    else:
+                        logger.warning(
+                            "Full reasoning JSONL file not found, fallback to concise reason: %s",
+                            full_reasoning_jsonl_file,
+                        )
+                checkpoint_hash, checkpoint = self.client.build_checkpoint_hash(
+                    agent_id=self.agent_id,
+                    action=action,
+                    pair=pair,
+                    amount_usd_scaled=amount_usd_scaled,
+                    price_usd_scaled=int(current_price_usd_scaled),
+                    reasoning=checkpoint_hash_input,
+                )
+
+                checkpoint_tx = self.client.post_checkpoint_attestation(
+                    agent_id=self.agent_id,
+                    checkpoint_hash=checkpoint_hash,
+                    score=self.FIXED_CHECKPOINT_SCORE,
+                    notes=checkpoint_notes,
+                )
+
+                self.client.append_checkpoint_jsonl(
+                    log_file=self.checkpoint_log_file,
+                    checkpoint_hash=checkpoint_hash,
+                    checkpoint=checkpoint,
+                    score=self.FIXED_CHECKPOINT_SCORE,
+                    notes=checkpoint_notes,
+                )
+
+                result.checkpoint_hash = checkpoint_hash
+                result.checkpoint_submitted = True
+                result.metadata["checkpoint"] = checkpoint
+                result.metadata["checkpoint_score"] = self.FIXED_CHECKPOINT_SCORE
+                result.metadata["checkpoint_notes"] = checkpoint_notes
+                result.metadata["checkpoint_hash_source"] = (
+                    full_reasoning_jsonl_file if full_reasoning_jsonl_file else "final_trade_decision.reason"
+                )
+                result.metadata["checkpoint_tx_hash"] = self._normalize_tx_hash(checkpoint_tx.tx_hash)
+                logger.info(f"Checkpoint submitted: {checkpoint_hash}")
+            except Exception as checkpoint_err:
+                result.checkpoint_error = f"Checkpoint submission failed: {checkpoint_err}"
+                logger.error(result.checkpoint_error, exc_info=True)
             
         except Exception as e:
             result.trade_error = f"TradeIntent submission failed: {str(e)}"
@@ -449,7 +507,7 @@ def create_on_chain_integrator(
     from dotenv import load_dotenv
     
     load_dotenv()
-    
+     
     rpc_url = rpc_url or os.getenv("SEPOLIA_RPC_URL")
     operator_key = operator_private_key or os.getenv("OPERATOR_PRIVATE_KEY")
     agent_key = agent_private_key or os.getenv("AGENT_WALLET_PRIVATE_KEY")

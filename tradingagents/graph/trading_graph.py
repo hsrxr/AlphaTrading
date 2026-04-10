@@ -442,6 +442,7 @@ class TradingAgentsGraph:
                     final_decision_json=final_state.get("final_trade_decision", ""),
                     current_price_usd_scaled=0,  # Optional: could be fetched from market data
                     trade_date=str(trade_date),
+                    full_reasoning_jsonl_file=self.current_trace_file,
                 )
 
                 trade_submitted = bool(submission_result.trade_submitted)

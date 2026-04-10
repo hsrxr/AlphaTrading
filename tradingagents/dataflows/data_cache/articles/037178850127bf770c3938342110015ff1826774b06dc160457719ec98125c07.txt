@@ -1,0 +1,31 @@
+Title: Bitcoin and Ethereum Open Interest Rises, Signaling Renewed Risk Appetite: CryptoQuant
+Source: Decrypt
+URL: https://decrypt.co/363865/bitcoin-ethereum-open-interest-rises-renewed-risk-appetite
+
+Bitcoin and Ethereum Open Interest Rises, Signaling Renewed Risk Appetite: CryptoQuant
+
+A surge in open interest, or the amount of money dedicated to futures contracts that have not yet settled, has helped propel the prices ofBitcoinandEthereumover the last 24 hours, according to a report from blockchain analytics firm CryptoQuant.
+
+Perpetual futures open interest has risen by $2.1 billion and $2.2 billion, respectively, for BTC and ETH over the last 24 hours, according to the firm, which says the dollar-denominated levels have hit their highest marks since last month.
+
+CoinGlassdata shows that Bitcoin open interest is currently at its highest level in more than two months, while Ethereum open interest is at its highest mark in about three weeks.
+
+“This synchronized surge across both major assets reflects macro-event-driven positioning, with traders front-running an anticipated improvement in broader risk sentiment,” CryptoQuant wrote in its weekly report, which followed a conditional ceasefire agreement between the U.S. and Iran.
+
+“Crucially, coin-denominated open interest also increased significantly for both assets,” they added, “ruling out short liquidations as the primary driver and confirming that traders are opening net new long positions.”
+
+About $182 million in shorts have been liquidated over the last 24 hours,according to data from CoinGlass, as Bitcoin and Ethereum trade at $72,103 and $2,216, respectively, on Thursday. At those levels, the top two crypto assets have each jumped more than 7% in the last week of trading, and Bitcoin touched its highest price in about three weeks earlier Thursday.
+
+Those price jumps have reversed “weeks of sustained bearish price action driven by macro uncertainty,” according to CryptoQuant, who also noted that the Coinbase Premium Index, which reflects the difference in asset prices between Coinbase and Binance, has turned positive for both BTC and ETH.
+
+In other words, the price for both assets has drifted higher on Coinbase than on Binance, a signal that U.S. investors are increasing demand.
+
+“The simultaneous flip to positive for both BTC and ETH suggests broad-based U.S. demand re-engagement,” the firm wrote. “If the ceasefire holds and no escalatory news emergesover the next two weeks, the Coinbase Premium could sustain positive territory, reinforcing the bullish price trajectory.”
+
+Despite their resurgence in the last 24 hours, the pair of leading crypto assets remain well off their all-time highs established last year. As it stands, Bitcoin is trading around 43% off its all-time high of $126,080. Meanwhile, Ethereum has fallen even further from its perch, dropping 55% from its August all-time high mark of $4,946.
+
+Your gateway into the world of Web3
+
+The latest news, articles, and resources, sent to your inbox weekly.
+
+© A next-generation media company.2026Decrypt Media, Inc.

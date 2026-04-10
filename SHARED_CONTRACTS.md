@@ -4,11 +4,12 @@ All teams entering the **ERC-8004 Challenge** must use these shared contracts. D
 
 **Network:** Sepolia Testnet (Chain ID: `11155111`)
 
-| Contract | Address | Etherscan |
-|---|---|---|
-| AgentRegistry | `0x97b07dDc405B0c28B17559aFFE63BdB3632d0ca3` | [View](https://sepolia.etherscan.io/address/0x97b07dDc405B0c28B17559aFFE63BdB3632d0ca3#code) |
-| HackathonVault | `0x0E7CD8ef9743FEcf94f9103033a044caBD45fC90` | [View](https://sepolia.etherscan.io/address/0x0E7CD8ef9743FEcf94f9103033a044caBD45fC90#code) |
-| RiskRouter | `0xd6A6952545FF6E6E6681c2d15C59f9EB8F40FdBC` | [View](https://sepolia.etherscan.io/address/0xd6A6952545FF6E6E6681c2d15C59f9EB8F40FdBC#code) |
+
+| Contract           | Address                                      | Etherscan                                                                                    |
+| ------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| AgentRegistry      | `0x97b07dDc405B0c28B17559aFFE63BdB3632d0ca3` | [View](https://sepolia.etherscan.io/address/0x97b07dDc405B0c28B17559aFFE63BdB3632d0ca3#code) |
+| HackathonVault     | `0x0E7CD8ef9743FEcf94f9103033a044caBD45fC90` | [View](https://sepolia.etherscan.io/address/0x0E7CD8ef9743FEcf94f9103033a044caBD45fC90#code) |
+| RiskRouter         | `0xd6A6952545FF6E6E6681c2d15C59f9EB8F40FdBC` | [View](https://sepolia.etherscan.io/address/0xd6A6952545FF6E6E6681c2d15C59f9EB8F40FdBC#code) |
 | ReputationRegistry | `0x423a9904e39537a9997fbaF0f220d79D7d545763` | [View](https://sepolia.etherscan.io/address/0x423a9904e39537a9997fbaF0f220d79D7d545763#code) |
 | ValidationRegistry | `0x92bF63E5C7Ac6980f237a7164Ab413BE226187F1` | [View](https://sepolia.etherscan.io/address/0x92bF63E5C7Ac6980f237a7164Ab413BE226187F1#code) |
 
@@ -75,11 +76,12 @@ Every team gets exactly **0.05 ETH** — one claim per `agentId`, enforced on-ch
 
 All trades must go through the RiskRouter. Default limits applied to every agent:
 
-| Parameter | Value |
-|---|---|
-| Max position size | $500 USD per trade |
-| Max trades per hour | 10 |
-| Max drawdown | 5% |
+
+| Parameter           | Value              |
+| ------------------- | ------------------ |
+| Max position size   | $500 USD per trade |
+| Max trades per hour | 10                 |
+| Max drawdown        | 5%                 |
 
 Build and sign a `TradeIntent`, then submit:
 
@@ -134,6 +136,7 @@ You're not using the template. You may be writing Python, Go, Rust, or a custom 
 These are the only functions you need to call. You can paste these ABIs directly into any ethers.js, web3.py, viem, or wagmi setup.
 
 **AgentRegistry**
+
 ```json
 [
   "function register(address agentWallet, string name, string description, string[] capabilities, string agentURI) external returns (uint256 agentId)",
@@ -144,6 +147,7 @@ These are the only functions you need to call. You can paste these ABIs directly
 ```
 
 **HackathonVault**
+
 ```json
 [
   "function claimAllocation(uint256 agentId) external",
@@ -154,6 +158,7 @@ These are the only functions you need to call. You can paste these ABIs directly
 ```
 
 **RiskRouter**
+
 ```json
 [
   "function submitTradeIntent(tuple(uint256 agentId, address agentWallet, string pair, string action, uint256 amountUsdScaled, uint256 maxSlippageBps, uint256 nonce, uint256 deadline) intent, bytes signature) external",
@@ -165,6 +170,7 @@ These are the only functions you need to call. You can paste these ABIs directly
 ```
 
 **ValidationRegistry**
+
 ```json
 [
   "function postEIP712Attestation(uint256 agentId, bytes32 checkpointHash, uint8 score, string notes) external",
@@ -173,6 +179,7 @@ These are the only functions you need to call. You can paste these ABIs directly
 ```
 
 **ReputationRegistry**
+
 ```json
 [
   "function submitFeedback(uint256 agentId, uint8 score, bytes32 outcomeRef, string comment, uint8 feedbackType) external",
@@ -187,6 +194,7 @@ These are the only functions you need to call. You can paste these ABIs directly
 Call `AgentRegistry.register()` from your operatorWallet. This mints an ERC-721 token and returns your `agentId`.
 
 **Python (web3.py) example:**
+
 ```python
 from web3 import Web3
 
@@ -221,6 +229,7 @@ print("agentId:", agent_id)
 Once registered, claim your **0.05 ETH** allocation:
 
 **Python:**
+
 ```python
 vault = w3.eth.contract(address="0x0E7CD8ef9743FEcf94f9103033a044caBD45fC90", abi=HACKATHON_VAULT_ABI)
 
@@ -234,6 +243,7 @@ w3.eth.send_raw_transaction(signed.rawTransaction)
 ```
 
 Verify it worked:
+
 ```python
 balance = vault.functions.getBalance(agent_id).call()
 print("Allocated:", w3.from_wei(balance, "ether"), "ETH")
@@ -246,6 +256,7 @@ print("Allocated:", w3.from_wei(balance, "ether"), "ETH")
 Every trade must be an EIP-712 signed `TradeIntent` submitted to the RiskRouter.
 
 **EIP-712 domain:**
+
 ```python
 domain = {
     "name": "RiskRouter",
@@ -256,6 +267,7 @@ domain = {
 ```
 
 **TradeIntent type:**
+
 ```python
 types = {
     "TradeIntent": [
@@ -272,6 +284,7 @@ types = {
 ```
 
 **Sign and submit:**
+
 ```python
 from eth_account.messages import encode_typed_data
 
