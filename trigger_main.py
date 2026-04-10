@@ -94,6 +94,9 @@ def main() -> None:
 
     config = DEFAULT_CONFIG.copy()
     config["enable_on_chain_submission"] = True
+    # Only keep verified Base DEX pools in trigger runtime.
+    # BNBUSD has no verified Base pool in the current data source set.
+    config["trigger_pairs"] = ["ETHUSD", "BTCUSD", "SOLUSD"]
 
     graph = TradingAgentsGraph(
         debug=True,

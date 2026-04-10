@@ -1,0 +1,10 @@
+{
+    "actual_warmup": 200,
+    "agent_limit": 10,
+    "total_fetched": 4996,
+    "db_total_rows": 4996,
+    "timeframe": "hour",
+    "cache_updated_at": "2026-04-10T08:48:45.995775",
+    "price_db_path": "tradingagents/dataflows/data_cache\\prices\\ETHUSD_ohlcv.csv",
+    "indicators_db_path": "tradingagents/dataflows/data_cache\\indicators\\ETHUSD_1h_indicators.csv"
+}
