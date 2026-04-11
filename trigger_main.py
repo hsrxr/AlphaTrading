@@ -36,13 +36,13 @@ def _configure_logging() -> Path:
 
 
 def _get_max_runtime_seconds() -> int:
-    """Read max runtime from env, defaulting to 3 hours."""
-    raw = os.getenv("TRIGGER_MAX_RUNTIME_SECONDS", "108000")
+    """Read max runtime from env, defaulting to 30 minutes."""
+    raw = os.getenv("TRIGGER_MAX_RUNTIME_SECONDS", "1800")
     try:
         value = int(raw)
     except ValueError:
-        logging.warning("Invalid TRIGGER_MAX_RUNTIME_SECONDS=%s; using 600", raw)
-        return 600
+        logging.warning("Invalid TRIGGER_MAX_RUNTIME_SECONDS=%s; using 1800", raw)
+        return 1800
     return max(1, value)
 
 
@@ -97,6 +97,9 @@ def main() -> None:
     # Only keep verified Base DEX pools in trigger runtime.
     # BNBUSD has no verified Base pool in the current data source set.
     config["trigger_pairs"] = ["ETHUSD", "BTCUSD", "SOLUSD"]
+    config["trigger_poll_interval_seconds"] = 5
+    config["trigger_aggregation_window_seconds"] = 45
+    config["trigger_cooldown_seconds"] = 150
 
     graph = TradingAgentsGraph(
         debug=True,
