@@ -118,6 +118,10 @@ visualisation/*.json
 .ipython/
 
 # VS Code specific (beyond .vscode/)
+
+# Keep frontend source lib files tracked (avoid conflict with generic `lib/` ignore)
+!web-dashboard/src/lib/
+!web-dashboard/src/lib/**
 *.code-workspace
 .vscode/settings.local.json
 
