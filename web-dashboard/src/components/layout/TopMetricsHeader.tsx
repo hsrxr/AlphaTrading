@@ -17,28 +17,35 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
 export function TopMetricsHeader(): React.JSX.Element {
   const metrics = useDashboardStore((state) => state.baseSnapshot.metrics);
   const isRunning = useDashboardStore((state) => state.isRunning);
-
-  const pnlVariant = metrics.pnl >= 0 ? "default" : "danger";
+  const runtimeMode = useDashboardStore((state) => state.runtimeMode);
 
   return (
-    <Card>
-      <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricItem label="Portfolio Value" value={currencyFormatter.format(metrics.portfolioValue)} />
-        <MetricItem
-          label="PnL"
-          value={currencyFormatter.format(metrics.pnl)}
-          accent={
-            <Badge variant={pnlVariant}>
-              {metrics.pnl >= 0 ? "Profit" : "Drawdown"}
-            </Badge>
-          }
-        />
-        <MetricItem label="Risk Exposure" value={percentFormatter.format(metrics.riskExposure)} />
-        <MetricItem
-          label="System Status"
-          value={isRunning ? "RUNNING" : "IDLE"}
-          accent={<StatusPill status={isRunning ? "running" : "degraded"} />}
-        />
+    <Card className="border-emerald-500/20 bg-[#08110e]/95 shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+      <CardContent className="space-y-4 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Risk Sentinel</p>
+            <p className="text-sm text-zinc-300">Monitoring portfolio health and execution guardrails in real time.</p>
+          </div>
+          <Badge variant={runtimeMode === "live" ? "default" : "muted"}>
+            {runtimeMode === "live" ? "Live backend" : "Mock simulation"}
+          </Badge>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricItem label="Total Assets" value={currencyFormatter.format(metrics.portfolioValue)} />
+          <MetricItem
+            label="Drawdown"
+            value={`${metrics.drawdownPct <= 0 ? "-" : "+"}${Math.abs(metrics.drawdownPct).toFixed(2)}%`}
+            accent={<Badge variant={metrics.drawdownPct <= -5 ? "danger" : "muted"}>{metrics.drawdownPct <= -5 ? "Hard stop" : "Within bounds"}</Badge>}
+          />
+          <MetricItem label="Risk Exposure" value={percentFormatter.format(metrics.riskExposure)} />
+          <MetricItem
+            label="System Status"
+            value={isRunning ? "RUNNING" : "IDLE"}
+            accent={<StatusPill status={isRunning ? "running" : metrics.status === "halted" ? "halted" : "degraded"} />}
+          />
+        </div>
       </CardContent>
     </Card>
   );

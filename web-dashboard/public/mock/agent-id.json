@@ -1,0 +1,14 @@
+{
+  "registry":{
+    "agentId": 40,
+    "txHash": "1d0d225cc456b23502da5317f48eac28d582c3d84c5c6aa04c43dce37c12db50",
+    "operatorWallet": "0x30d0367aBF2D1383BeC707BF2343E8f19cB64c5c",
+    "agentWallet": "0xBE6Dc64196b14256771dB6D27Eb0Ea8b52B00643"
+  },
+  "claim": {
+    "agentId": 40,
+    "txHash": "b17b26128421011df845a48c674df986f3333246b136b2d6848b91d04f540465",     
+    "balanceWei": 1000000000000000,
+    "balanceEth": "0.001"
+  }
+}

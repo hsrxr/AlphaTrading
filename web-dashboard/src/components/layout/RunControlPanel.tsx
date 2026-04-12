@@ -2,6 +2,8 @@ import { useDashboardStore } from "@/store/dashboardStore";
 
 export function RunControlPanel(): React.JSX.Element {
   const isRunning = useDashboardStore((state) => state.isRunning);
+  const runtimeMode = useDashboardStore((state) => state.runtimeMode);
+  const runtimeDetail = useDashboardStore((state) => state.runtimeDetail);
   const autoTriggerEnabled = useDashboardStore((state) => state.autoTriggerEnabled);
   const autoTriggerIntervalSec = useDashboardStore((state) => state.autoTriggerIntervalSec);
   const runCount = useDashboardStore((state) => state.runCount);
@@ -59,6 +61,9 @@ export function RunControlPanel(): React.JSX.Element {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-zinc-400">
+        <p>
+          mode: <span className="font-mono text-zinc-200">{runtimeMode.toUpperCase()}</span>
+        </p>
         <p>run_count: <span className="font-mono text-zinc-200">{runCount}</span></p>
         <p>status: <span className="font-mono text-zinc-200">{isRunning ? "running" : "idle"}</span></p>
         <p>run_id: <span className="font-mono text-zinc-200">{runId ?? "-"}</span></p>
@@ -66,6 +71,8 @@ export function RunControlPanel(): React.JSX.Element {
           last_run: <span className="font-mono text-zinc-200">{lastRunAt ? new Date(lastRunAt).toLocaleTimeString() : "-"}</span>
         </p>
       </div>
+
+      <p className="mt-2 text-xs text-zinc-500">{runtimeDetail}</p>
 
       {errorMessage ? (
         <p className="mt-2 text-xs text-rose-300">runtime_api_error: {errorMessage}</p>

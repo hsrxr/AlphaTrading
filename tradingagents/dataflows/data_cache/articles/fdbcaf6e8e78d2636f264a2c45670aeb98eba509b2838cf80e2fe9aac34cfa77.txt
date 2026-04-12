@@ -1,0 +1,21 @@
+Title: $1.6 billion Ether Machine SPAC deal collapses over unfavorable market
+Source: CoinDesk
+URL: https://www.coindesk.com/business/2026/04/11/usd1-6-billion-ether-machine-spac-deal-collapses-over-unfavorable-market
+
+A planned $1.6 billionSPAC mergerbetween Dynamix Corporation (DYNX) and crypto firm The Ether Machine has been terminated, over unfavorable market conditions, The Ether Machinesaid Friday.
+
+The agreement, first unveiled in July 2025, aimed to take ether (ETH) treasury firm The Ether Machine public on Nasdaq under the ticker ETHM.
+
+The company is designed to act as an Ethereum treasury and yield vehicle, generating returns through staking and decentralized finance strategies while holding large reserves of ether. It currently holds 496,712 ETH worth more than $1.1 billion, according toCoinGecko data.
+
+Initially, the deal stood out for its scale. Itincluded a $1.5 billion fully committed PIPE financingdeal, described as the largest all-common-stock raise of its kind since 2021, alongside roughly $170 million held in Dynamix’s trust account.
+
+The combined company was expected to launch with more than 400,000 ETH on its balance sheet, backed in part by a contribution from co-founder Andrew Keys.
+
+The merger has now been called off due to what the companies described as unfavorable market conditions. According to The Ether Machine, the two firms "mutually agreed to terminate" the deal. As part of the termination agreement, Dynamix will receive a $50 million payment within 15 days, according to afilingwith the U.S. Securities and Exchange Commission (SEC).
+
+Most crypto privacy models weaken as blockchain data grows. Encryption-based models like Zcash strengthen. CoinDesk Research maps the five privacy approaches and examines the widening gap.
+
+As blockchain adoption scales, the metadata available to machine learning models scales with it. Obfuscation-based privacy approaches are structurally degrading as a result. This report provides a comprehensive comparison of all five major crypto privacy architectures and a framework for evaluating which models remain durable as AI capabilities improve.
+
+As oil shocks revive investor anxiety, stablecoins solved payments, but not purchasing power, says Michael Ashton, who's USDi token aims to fix that.

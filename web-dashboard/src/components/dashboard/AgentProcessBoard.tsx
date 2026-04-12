@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -18,7 +18,7 @@ const analystBorderMap: Record<string, string> = {
 };
 
 const parallelResearchActors = ["Bull Researcher", "Bear Researcher"];
-const serialDownstreamOrder = ["Risk Engine", "Trader", "System", "Unknown"];
+const serialDownstreamOrder = ["Trader", "Risk Engine", "System", "Unknown"];
 
 const eventDisplayAllowlist = new Set(["llm_call", "llm_token", "tool_call", "tool_start", "tool_end", "node_start", "node_end", "error"]);
 
@@ -37,52 +37,9 @@ type ToolCallInfo = {
 };
 
 function StreamingText({ text, className }: { text: string; className?: string }): React.JSX.Element {
-  const [visibleWordCount, setVisibleWordCount] = useState(0);
-
-  const tokens = useMemo(() => text.split(/(\s+)/).filter((token) => token.length > 0), [text]);
-
-  useEffect(() => {
-    setVisibleWordCount((prev) => Math.min(prev, tokens.length));
-  }, [tokens.length]);
-
-  useEffect(() => {
-    if (visibleWordCount >= tokens.length) {
-      return;
-    }
-
-    const getStep = (remaining: number): number => {
-      if (remaining > 1000) return 80;
-      if (remaining > 600) return 50;
-      if (remaining > 300) return 24;
-      if (remaining > 120) return 10;
-      if (remaining > 40) return 4;
-      return 2;
-    };
-
-    const timer = window.setInterval(() => {
-      setVisibleWordCount((prev) => {
-        if (prev >= tokens.length) {
-          window.clearInterval(timer);
-          return prev;
-        }
-
-        const remaining = tokens.length - prev;
-        const step = getStep(remaining);
-        const next = Math.min(tokens.length, prev + step);
-        if (next >= tokens.length) {
-          window.clearInterval(timer);
-        }
-        return next;
-      });
-    }, 10);
-
-    return () => window.clearInterval(timer);
-  }, [tokens.length, visibleWordCount]);
-
-  const shownText = tokens.slice(0, visibleWordCount).join("");
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{shownText}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
     </div>
   );
 }
@@ -423,7 +380,6 @@ function ActorConversation({ actor, rows }: { actor: string; rows: RuntimeEvent[
 
           <div className="space-y-2">
             {session.events
-              .filter((event) => event.event !== "llm_call")
               .map((event) => (
                 <div key={event.id} className="min-w-0 rounded-md border border-zinc-800 bg-zinc-900/50 p-1.5">
                   <div className="flex items-center justify-between gap-2">

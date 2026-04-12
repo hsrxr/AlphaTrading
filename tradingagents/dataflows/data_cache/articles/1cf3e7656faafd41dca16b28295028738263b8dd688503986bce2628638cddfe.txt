@@ -1,0 +1,51 @@
+Title: Bitcoin price analysis sees new short squeeze as open interest nears $25B
+Source: Cointelegraph
+URL: https://cointelegraph.com/news/bitcoin-price-analysis-sees-new-short-squeeze-as-open-interest-nears-25b?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound
+
+Bitcoin open interest hit five-week highs while funding rates mimicked the BTC price collapse below $60,000, leading analysis to predict a new short squeeze.
+
+Cointelegraph in your social feed
+
+Bitcoin (BTC) is due a classic “short squeeze” as open interest hits five-week highs, says new analysis.
+
+Bitcoin is seeing a combination of rising open interest and negative funding rates.
+
+The result could punish short positions, with funding rates at the most negative since early February.
+
+Large-scale Bitcoin speculators are net long BTC again.
+
+In one of its “Quicktake” blog posts on Saturday, onchain analytics platform CryptoQuant said that Bitcoin was “crowded” with short positions.
+
+“BTC is flowing out of exchanges while funding rates remain strongly negative, creating an increasingly crowded short positioning environment where the potential for a short squeeze is building,” contributor CoinNiel summarized.
+
+AfterBTC/USD passed $73,000on Friday, traders appeared eager to trap those entering the market who were betting on continued price upside. Funding rates stayed negative on exchanges, while open interest grew to $24.2 billion — its highest since early March.
+
+“Since March, negative funding has become more frequent, and throughout April it has remained in negative territory without flipping positive,” the post continued.
+
+CoinNiel said that the combination of rising open interest and negative funding rates “suggests that leveraged short positions have been rapidly accumulating.”
+
+“The slight decrease does not yet indicate a meaningful deleveraging phase,” he acknowledged.
+
+Fellow contributor Gaah agreed, noting that funding rates had hit their deepest negative value since Bitcoin’s dip to multiyear lows at the start of February.
+
+“Caution is needed when establishing positions in current range, since it represents an area of buying demand,” he wrote in afurther Quicktake post.
+
+Earlier,Cointelegraph reportedon short liquidations staying modest despite the BTC price upside.
+
+Related:Bitcoin analysis sees $55K BTC price 'iron bottom' by December 2026
+
+Data fromCoinGlassshowed that over the 24 hours to the time of writing, cross-crypto liquidations totaled less than $100 million.
+
+Sentiment among market participants, meanwhile, has gradually begun tofavor fresh upside, with targetsincluding $80,000 and higher.
+
+On Saturday, crypto trader Michaël Van de Poppe eyed increasing belief in a BTC price rebound among large-volume speculators.
+
+“Speculators are net long on Bitcoin. Very similar to previous cases where we've seen the same before a big breakout in 2023,” hewrotein a post on X.
+
+This article is produced in accordance with Cointelegraph's Editorial Policy and is intended for informational purposes only. It does not constitute investment advice or recommendations. All investments and trades carry risk; readers are encouraged to conduct independent research before making any decisions. Cointelegraph makes no guarantees regarding the accuracy or completeness of the information presented, including forward-looking statements, and will not be liable for any loss or damage arising from reliance on this content.
+
+Cointelegraph covers fintech, blockchain and Bitcoin bringing you the latest crypto news and analyses on the future of money.
+
+Cointelegraph is committed to providing independent, high-quality journalism across the crypto, blockchain, AI, and fintech industries. To support open access to our website and sustain editorial operations, certain commercial or partner references may appear on our site. These arrangements help maintain an accessible platform and do not result in additional costs to readers.
+
+All news, reviews, and analysis are produced with full journalistic independence and integrity. For more details on our standards and processes, please read ourEditorial Policy.

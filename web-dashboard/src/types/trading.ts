@@ -16,6 +16,7 @@ export interface PortfolioMetrics {
   timestamp: string;
   portfolioValue: number;
   pnl: number;
+  drawdownPct: number;
   riskExposure: number;
   status: "running" | "degraded" | "halted";
 }
@@ -66,11 +67,31 @@ export interface RuntimeEvent {
 export interface TradeRecord {
   id: string;
   timestamp: string;
-  pair: "WETH/USDC";
+  pair: string;
   side: TradeSide;
   quantity: number;
   price: number;
   reason: string;
+}
+
+export interface RiskAlert {
+  id: string;
+  timestamp: string;
+  severity: "info" | "warning" | "critical";
+  source: string;
+  message: string;
+}
+
+export interface ExecutionTrailRecord {
+  id: string;
+  timestamp: string;
+  pair: string;
+  side: TradeSide | "N/A";
+  notionalUsd: number;
+  status: "Registry" | "Claimed" | "Submitted" | "Timeout" | "Failed" | "Success";
+  venue: string;
+  txHash: string;
+  note: string;
 }
 
 export interface TradeExecutionMarker {
@@ -81,12 +102,14 @@ export interface TradeExecutionMarker {
 }
 
 export interface TradingDashboardSnapshot {
-  pair: "WETH/USDC";
+  pair: string;
   metrics: PortfolioMetrics;
   priceSeries: PricePoint[];
   agentFeed: AgentStateMessage[];
   agentProcessFeed: AgentProcessMessage[];
   runtimeEvents: RuntimeEvent[];
   trades: TradeRecord[];
+  riskAlerts: RiskAlert[];
+  executionTrail: ExecutionTrailRecord[];
   executionMarkers: TradeExecutionMarker[];
 }

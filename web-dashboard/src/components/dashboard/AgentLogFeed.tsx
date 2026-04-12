@@ -17,7 +17,16 @@ const agentColorMap: Record<AgentName, string> = {
 };
 
 export function AgentLogFeed(): React.JSX.Element {
-  const feed = useDashboardStore((state) => state.baseSnapshot.agentFeed);
+  const events = useDashboardStore((state) => state.runtimeEvents);
+
+  const feed = events
+    .filter((event) => event.event === "llm_call")
+    .map((event) => ({
+      id: event.id,
+      timestamp: event.timestamp,
+      agent: event.actor as AgentName,
+      summary: event.detail,
+    }));
 
   return (
     <Card className="h-full">
@@ -27,22 +36,26 @@ export function AgentLogFeed(): React.JSX.Element {
       <CardContent className="h-[360px]">
         <ScrollArea className="h-full space-y-3">
           <div className="space-y-3">
-            {feed.map((item) => (
-              <article key={item.id} className="rounded-md border border-zinc-800 bg-zinc-950/80 p-3">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <Badge className={agentColorMap[item.agent]} variant="muted">
-                    {item.agent}
-                  </Badge>
-                  <span className="font-mono text-xs text-zinc-500">
-                    {new Date(item.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                <p className="text-sm text-zinc-200">{item.summary}</p>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.08em] text-zinc-500">
-                  confidence {(item.confidence * 100).toFixed(0)}%
-                </p>
-              </article>
-            ))}
+            {feed.length > 0 ? (
+              feed.map((item) => (
+                <article key={item.id} className="rounded-md border border-zinc-800 bg-zinc-950/80 p-3">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <Badge className={agentColorMap[item.agent] ?? agentColorMap.Unknown} variant="muted">
+                      {item.agent}
+                    </Badge>
+                    <span className="font-mono text-xs text-zinc-500">
+                      {new Date(item.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="text-sm text-zinc-200">{item.summary}</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.08em] text-zinc-500">live trace</p>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-md border border-dashed border-zinc-800 bg-zinc-950/50 p-4 text-sm text-zinc-400">
+                No live agent output yet. Start a run to stream the trace here.
+              </div>
+            )}
           </div>
         </ScrollArea>
       </CardContent>

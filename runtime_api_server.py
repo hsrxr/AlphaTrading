@@ -36,6 +36,15 @@ RUNS: Dict[str, RunState] = {}
 RUNS_LOCK = threading.Lock()
 
 
+@dataclass
+class ReplaySpeedConfig:
+    speed_multiplier: float = 1.0
+
+
+SPEED_CONFIG = ReplaySpeedConfig()
+SPEED_LOCK = threading.Lock()
+
+
 def _load_local_env() -> None:
     """Load key=value pairs from project .env into process env if missing."""
     env_path = Path(__file__).resolve().parent / ".env"
@@ -58,6 +67,14 @@ _load_local_env()
 
 def _iso_now() -> str:
     return datetime.now().isoformat()
+
+
+def _clamp_speed_multiplier(value: Any) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return max(0.25, min(64.0, numeric))
 
 
 def _actor_from_prompt(prompt: str) -> str:
@@ -269,6 +286,18 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/healthz":
             return self._json({"ok": True, "time": _iso_now()})
 
+        if path == "/api/replay/speed":
+            with SPEED_LOCK:
+                speed_multiplier = SPEED_CONFIG.speed_multiplier
+            return self._json(
+                {
+                    "speedMultiplier": speed_multiplier,
+                    "min": 0.25,
+                    "max": 64.0,
+                    "updatedAt": _iso_now(),
+                }
+            )
+
         if path == "/api/runs":
             with RUNS_LOCK:
                 runs = [
@@ -344,6 +373,33 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/replay/speed":
+            try:
+                content_len = int(self.headers.get("Content-Length", "0"))
+                body_raw = self.rfile.read(content_len) if content_len > 0 else b"{}"
+                body = json.loads(body_raw.decode("utf-8"))
+            except Exception:
+                return self._json({"error": "invalid_json"}, status=400)
+
+            requested = body.get("speedMultiplier")
+            if requested is None:
+                return self._json({"error": "speedMultiplier_required"}, status=400)
+
+            normalized = _clamp_speed_multiplier(requested)
+            with SPEED_LOCK:
+                SPEED_CONFIG.speed_multiplier = normalized
+
+            return self._json(
+                {
+                    "ok": True,
+                    "speedMultiplier": normalized,
+                    "min": 0.25,
+                    "max": 64.0,
+                    "updatedAt": _iso_now(),
+                }
+            )
+
         if parsed.path != "/api/run/start":
             return self._json({"error": "not_found"}, status=404)
 

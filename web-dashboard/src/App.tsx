@@ -1,7 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AgentProcessBoard } from "@/components/dashboard/AgentProcessBoard";
 import { RecentTradesTable } from "@/components/dashboard/RecentTradesTable";
+import { RunTimeline } from "@/components/dashboard/RunTimeline";
+import { HackathonBanner } from "@/components/layout/HackathonBanner";
 import { AppSidebar, type SidebarSectionKey } from "@/components/layout/AppSidebar";
 import { RunControlPanel } from "@/components/layout/RunControlPanel";
 import { TopMetricsHeader } from "@/components/layout/TopMetricsHeader";
@@ -9,8 +11,13 @@ import { useDashboardStore } from "@/store/dashboardStore";
 
 function App(): React.JSX.Element {
   const pair = useDashboardStore((state) => state.baseSnapshot.pair);
+  const initializeRuntime = useDashboardStore((state) => state.initializeRuntime);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState<SidebarSectionKey>("live-pulse");
+
+  useEffect(() => {
+    void initializeRuntime();
+  }, [initializeRuntime]);
 
   const sectionRefs = useRef<Record<SidebarSectionKey, HTMLElement | null>>({
     "live-pulse": null,
@@ -42,7 +49,8 @@ function App(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-matrix">
-      <div className="mx-auto flex min-h-screen max-w-[1920px]">
+      <HackathonBanner />
+      <div className="mx-auto flex min-h-[calc(100vh-49px)] max-w-[1920px]">
         <AppSidebar
           isCollapsed={isSidebarCollapsed}
           onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
@@ -56,6 +64,7 @@ function App(): React.JSX.Element {
               className="space-y-4 animate-riseIn"
               ref={(el) => {
                 sectionRefs.current["live-pulse"] = el;
+                sectionRefs.current["risk-sentinel"] = el;
               }}
             >
               <div className="flex flex-wrap items-end justify-between gap-2">
@@ -91,6 +100,10 @@ function App(): React.JSX.Element {
               <RecentTradesTable />
             </section>
           </div>
+
+          <aside className="pointer-events-none fixed bottom-4 right-4 z-40 h-[230px] w-[260px] animate-riseIn sm:h-[250px] sm:w-[280px]">
+            <RunTimeline compact floating />
+          </aside>
         </main>
       </div>
     </div>

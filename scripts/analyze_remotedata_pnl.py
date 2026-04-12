@@ -1,156 +1,40 @@
 import json
-import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Optional
-from datetime import datetime, timedelta
 
 import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REMOTE_DIR = ROOT / "remotedata"
-LEDGER_JSON = REMOTE_DIR / "memory" / "trade_memory" / "virtual_ledger.json"
-PORTFOLIO_DB = REMOTE_DIR / "memory" / "trade_memory" / "portfolio.db"
 OUTPUT_DIR = ROOT / "visualisation" / "remotedata_pnl"
 DATA_CACHE_DIR = ROOT / "tradingagents" / "dataflows" / "data_cache" / "prices"
 EVAL_RESULTS_DIR = ROOT / "eval_results"
+REMOTE_EVAL_RESULTS_DIR = ROOT / "remotedata" / "results" / "eval_results"
 
-# Pair mapping: virtual ledger pair name -> cache file name
 PAIR_MAPPING = {
     "BTCUSD": "BTCUSDT_ohlcv.csv",
     "ETHUSD": "ETHUSDT_ohlcv.csv",
     "SOLUSD": "SOLUSDT_ohlcv.csv",
     "WETH/USDC": "WETH_USDC_ohlcv.csv",
-    "XBTUSD": "BTCUSDT_ohlcv.csv",  # XBT = BTC
+    "XBTUSD": "BTCUSDT_ohlcv.csv",
+}
+
+SIZE_RULES_USD = {
+    220: 10000.0,  # 10% of 100000
+    22: 5000.0,    # 5% of 100000
+}
+
+PAIR_ALIAS = {
+    "ETHUSD": "ETH_COMBINED",
+    "WETH/USDC": "ETH_COMBINED",
 }
 
 
-def _load_virtual_ledger(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"virtual ledger not found: {path}")
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _load_portfolio_state(db_path: Path) -> pd.DataFrame:
-    if not db_path.exists():
-        raise FileNotFoundError(f"portfolio db not found: {db_path}")
-
-    query = """
-        SELECT
-            id,
-            timestamp,
-            cash_usd,
-            unrealized_pnl,
-            realized_pnl,
-            total_assets,
-            created_at
-        FROM portfolio_state
-        ORDER BY id ASC
-    """
-    with sqlite3.connect(db_path) as conn:
-        df = pd.read_sql_query(query, conn)
-
-    if df.empty:
-        return df
-
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
-    df["created_at"] = pd.to_datetime(df["created_at"], utc=True, errors="coerce")
-    # Some rows have empty timestamp but valid created_at; use created_at as fallback.
-    df["timestamp"] = df["timestamp"].fillna(df["created_at"])
-    df = df.sort_values(["timestamp", "id"]).reset_index(drop=True)
-
-    # Keep the newest row when multiple snapshots share the same timestamp.
-    df = df.drop_duplicates(subset=["timestamp"], keep="last").reset_index(drop=True)
-
-    df["total_assets"] = pd.to_numeric(df["total_assets"], errors="coerce")
-    df["cash_usd"] = pd.to_numeric(df["cash_usd"], errors="coerce")
-    df["unrealized_pnl"] = pd.to_numeric(df["unrealized_pnl"], errors="coerce")
-    df["realized_pnl"] = pd.to_numeric(df["realized_pnl"], errors="coerce")
-
-    base = float(df["total_assets"].iloc[0])
-    if base == 0:
-        base = 1.0
-
-    df["cum_return"] = df["total_assets"] / base - 1.0
-    df["cum_return_pct"] = df["cum_return"] * 100.0
-    df["running_peak"] = df["total_assets"].cummax()
-    df["drawdown"] = df["total_assets"] / df["running_peak"] - 1.0
-    df["drawdown_pct"] = df["drawdown"] * 100.0
-
-    return df
-
-
-def _load_trade_history(db_path: Path) -> pd.DataFrame:
-    query = """
-        SELECT
-            id,
-            timestamp,
-            ticker,
-            side,
-            notional_usd,
-            status,
-            realized_pnl,
-            created_at
-        FROM trade_history
-        ORDER BY id ASC
-    """
-    with sqlite3.connect(db_path) as conn:
-        df = pd.read_sql_query(query, conn)
-
-    if df.empty:
-        return df
-
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
-    df["created_at"] = pd.to_datetime(df["created_at"], utc=True, errors="coerce")
-    df["timestamp"] = df["timestamp"].fillna(df["created_at"])
-    df["notional_usd"] = pd.to_numeric(df["notional_usd"], errors="coerce").fillna(0.0)
-    df["realized_pnl"] = pd.to_numeric(df["realized_pnl"], errors="coerce")
-    # For this dashboard we treat open trades as executed unless explicitly rejected.
-    status = df["status"].astype(str).str.lower()
-    df["effective_execution_status"] = status.where(status != "open", "executed_assumed")
-
-    return df
-
-
-def _build_trade_activity(trades: pd.DataFrame) -> pd.DataFrame:
-    if trades.empty:
-        return trades
-
-    daily = trades.copy()
-    daily["date"] = daily["timestamp"].dt.floor("D")
-    out = (
-        daily.groupby("date", as_index=False)
-        .agg(trade_count=("id", "count"), notional_usd=("notional_usd", "sum"))
-        .sort_values("date")
-    )
-    out["cum_notional_usd"] = out["notional_usd"].cumsum()
-    return out
-
-
-def _build_ledger_activity(ledger: Dict[str, Any]) -> pd.DataFrame:
-    trades = ledger.get("trades", [])
-    if not trades:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(trades)
-    if "submitted_at" not in df.columns:
-        return pd.DataFrame()
-
-    df["submitted_at"] = pd.to_datetime(df["submitted_at"], utc=True, errors="coerce")
-    df["amount_usd"] = pd.to_numeric(df.get("amount_usd", 0.0), errors="coerce").fillna(0.0)
-    df = df.sort_values("submitted_at").reset_index(drop=True)
-    df["cum_submitted_usd"] = df["amount_usd"].cumsum()
-
-    daily = df.copy()
-    daily["date"] = daily["submitted_at"].dt.floor("D")
-    daily = (
-        daily.groupby("date", as_index=False)
-        .agg(ledger_trade_count=("id", "count"), ledger_submitted_usd=("amount_usd", "sum"))
-        .sort_values("date")
-    )
-    daily["ledger_cum_submitted_usd"] = daily["ledger_submitted_usd"].cumsum()
-    return daily
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
 
 
 def _extract_json_candidate(text: str) -> str:
@@ -181,8 +65,63 @@ def _safe_json_loads(text: Any) -> Dict[str, Any]:
         return {}
 
 
-def _load_trader_proposals(eval_root: Path) -> pd.DataFrame:
-    """Load trader proposed sizing from full_states_log files in eval_results."""
+def _load_cached_prices(pair: str) -> Optional[pd.DataFrame]:
+    cache_file = PAIR_MAPPING.get(pair)
+    if not cache_file:
+        return None
+
+    file_path = DATA_CACHE_DIR / cache_file
+    if not file_path.exists():
+        return None
+
+    try:
+        df = pd.read_csv(file_path, parse_dates=["datetime"])
+        df["timestamp"] = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
+        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        df = df.dropna(subset=["timestamp", "close"]).sort_values("timestamp").reset_index(drop=True)
+        return df
+    except Exception:
+        return None
+
+
+def _price_at_or_before(prices: pd.DataFrame, ts: pd.Timestamp) -> Optional[float]:
+    x = prices[prices["timestamp"] <= ts]
+    if x.empty:
+        return None
+    return float(x.iloc[-1]["close"])
+
+
+def _price_at_or_after(prices: pd.DataFrame, ts: pd.Timestamp) -> Optional[float]:
+    x = prices[prices["timestamp"] >= ts]
+    if x.empty:
+        return None
+    return float(x.iloc[0]["close"])
+
+
+def _estimate_exit_price(prices: pd.DataFrame, entry_price: float, hold_hours: int) -> float:
+    """Estimate exit when future bars are unavailable.
+
+    Use recent momentum as a conservative proxy for forward move.
+    """
+    if prices.empty or entry_price <= 0:
+        return entry_price
+
+    lookback = max(6, min(hold_hours, 72))
+    closes = prices["close"].tail(lookback + 1)
+    if len(closes) < 2:
+        return entry_price
+
+    first = float(closes.iloc[0])
+    last = float(closes.iloc[-1])
+    if first <= 0:
+        return entry_price
+
+    momentum_ret = (last - first) / first
+    capped_ret = max(-0.03, min(0.03, momentum_ret))
+    return entry_price * (1.0 + capped_ret)
+
+
+def _load_trader_decisions(eval_root: Path) -> pd.DataFrame:
     if not eval_root.exists():
         return pd.DataFrame()
 
@@ -202,22 +141,20 @@ def _load_trader_proposals(eval_root: Path) -> pd.DataFrame:
 
             pair = str(state.get("company_of_interest") or "").strip()
             trade_date = state.get("trade_date")
-            trader_raw = state.get("trader_investment_decision") or state.get("trader_investment_plan")
-            trader_obj = _safe_json_loads(trader_raw)
-            if not trader_obj:
+            decision_obj = _safe_json_loads(state.get("trader_investment_decision"))
+
+            if not pair or not trade_date or not decision_obj:
                 continue
 
-            amount_scaled = _safe_float(trader_obj.get("amountUsdScaled"), 0.0)
-            action = str(trader_obj.get("action", "HOLD")).upper()
-            if not pair or trade_date is None:
-                continue
+            action = str(decision_obj.get("action", "")).strip().upper()
+            amount_scaled = int(round(_safe_float(decision_obj.get("amountUsdScaled"), 0.0)))
 
             rows.append(
                 {
                     "timestamp": trade_date,
                     "pair": pair,
                     "action": action,
-                    "amount_usd": max(0.0, amount_scaled / 100.0),
+                    "amount_usd_scaled": amount_scaled,
                     "source_file": str(path),
                 }
             )
@@ -227,404 +164,244 @@ def _load_trader_proposals(eval_root: Path) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
-    df = df.dropna(subset=["timestamp", "pair"]).sort_values("timestamp").reset_index(drop=True)
+    df = df.dropna(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
     return df
 
 
-def _apply_trader_proposed_sizes_to_ledger(
-    ledger: Dict[str, Any],
-    trader_proposals: pd.DataFrame,
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    """Create a ledger copy with amount_usd replaced by trader proposed amount where matched."""
-    ledger_copy = json.loads(json.dumps(ledger))
-    trades = ledger_copy.get("trades", [])
-    if not trades:
-        return ledger_copy, {
-            "trades_total": 0,
-            "trades_matched": 0,
-            "trades_unmatched": 0,
-            "total_actual_amount_usd": 0.0,
-            "total_trader_proposed_amount_usd": 0.0,
-            "average_trader_proposed_amount_usd": 0.0,
-            "average_actual_amount_usd": 0.0,
+def _apply_size_rules(decisions: pd.DataFrame) -> tuple[pd.DataFrame, Dict[str, Any]]:
+    if decisions.empty:
+        return decisions.copy(), {
+            "raw_decisions": 0,
+            "buy_sell_decisions": 0,
+            "used_decisions": 0,
+            "skipped_unmapped_scaled": 0,
+            "scaled_22_count": 0,
+            "scaled_220_count": 0,
+            "buy_count": 0,
+            "sell_count": 0,
         }
 
-    actual_total = 0.0
-    proposed_total = 0.0
-    matched = 0
+    d = decisions.copy()
+    d = d[d["action"].isin(["BUY", "SELL"])].copy()
+    d["amount_usd"] = d["amount_usd_scaled"].map(SIZE_RULES_USD)
 
-    proposals = trader_proposals.copy() if not trader_proposals.empty else pd.DataFrame()
+    raw_count = len(decisions)
+    buy_sell_count = len(d)
+    used = d.dropna(subset=["amount_usd"]).copy()
 
-    for trade in trades:
-        current_amount = _safe_float(trade.get("amount_usd"), 0.0)
-        actual_total += current_amount
-
-        pair = str(trade.get("pair") or "").strip()
-        submitted_at = pd.to_datetime(trade.get("submitted_at"), utc=True, errors="coerce")
-        matched_amount = current_amount
-
-        if (
-            not proposals.empty
-            and pair
-            and pd.notna(submitted_at)
-        ):
-            candidates = proposals[proposals["pair"] == pair]
-            if not candidates.empty:
-                deltas = (candidates["timestamp"] - submitted_at).abs()
-                idx = deltas.idxmin()
-                matched_amount = _safe_float(candidates.loc[idx, "amount_usd"], current_amount)
-                trade["trader_proposed_amount_usd"] = matched_amount
-                trade["trader_proposed_trade_time"] = candidates.loc[idx, "timestamp"].isoformat()
-                trade["trader_proposed_action"] = str(candidates.loc[idx, "action"])
-                matched += 1
-
-        trade["amount_usd_original"] = current_amount
-        trade["amount_usd"] = max(0.0, matched_amount)
-        proposed_total += trade["amount_usd"]
-
-    total_trades = len(trades)
-    unmatched = max(0, total_trades - matched)
-    return ledger_copy, {
-        "trades_total": total_trades,
-        "trades_matched": matched,
-        "trades_unmatched": unmatched,
-        "total_actual_amount_usd": round(actual_total, 6),
-        "total_trader_proposed_amount_usd": round(proposed_total, 6),
-        "average_trader_proposed_amount_usd": round(proposed_total / max(1, total_trades), 6),
-        "average_actual_amount_usd": round(actual_total / max(1, total_trades), 6),
+    stats = {
+        "raw_decisions": int(raw_count),
+        "buy_sell_decisions": int(buy_sell_count),
+        "used_decisions": int(len(used)),
+        "skipped_unmapped_scaled": int(buy_sell_count - len(used)),
+        "scaled_22_count": int((used["amount_usd_scaled"] == 22).sum()),
+        "scaled_220_count": int((used["amount_usd_scaled"] == 220).sum()),
+        "buy_count": int((used["action"] == "BUY").sum()),
+        "sell_count": int((used["action"] == "SELL").sum()),
     }
 
+    used = used.sort_values("timestamp").reset_index(drop=True)
+    return used, stats
 
-def _compute_assumed_execution_pnl(ledger: Dict[str, Any]) -> Dict[str, Any]:
-    """Compute PnL assuming all submitted trades executed at reference_price.
-    
-    If execution_price is set, use it; otherwise use reference_price.
-    """
-    trades = ledger.get("trades", [])
-    if not trades:
-        return {
-            "total_assumed_pnl": 0.0,
-            "executed_or_closed_count": 0,
-            "trades_with_price": 0,
+
+def _backtest_from_decisions(
+    decisions: pd.DataFrame,
+    initial_capital_usd: float = 100000.0,
+    hold_hours: int = 24,
+) -> tuple[pd.DataFrame, Dict[str, Any]]:
+    if decisions.empty:
+        return pd.DataFrame(), {
+            "initial_capital_usd": initial_capital_usd,
+            "end_equity_usd": initial_capital_usd,
+            "total_pnl_usd": 0.0,
+            "total_return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "trades_executed": 0,
+            "trades_skipped_no_price": 0,
+            "win_rate_pct": 0.0,
+            "average_trade_pnl_usd": 0.0,
+            "hold_hours": hold_hours,
         }
-    
-    total_pnl = 0.0
-    trades_with_price = 0
-    executed_count = 0
-    
-    for trade in trades:
-        amount = trade.get("amount_usd", 0.0)
-        status = str(trade.get("status", "")).lower()
-        
-        # Get execution or reference price
-        exec_price = trade.get("execution_price")
-        ref_price = trade.get("reference_price")
-        price = exec_price if exec_price else ref_price
-        
-        if not price or price <= 0:
+
+    price_cache: Dict[str, Optional[pd.DataFrame]] = {}
+
+    def get_prices(pair: str) -> Optional[pd.DataFrame]:
+        if pair not in price_cache:
+            price_cache[pair] = _load_cached_prices(pair)
+        return price_cache[pair]
+
+    equity = float(initial_capital_usd)
+    rows = []
+    wins = 0
+    executed = 0
+    skipped = 0
+
+    for _, row in decisions.iterrows():
+        pair = str(row["pair"])
+        action = str(row["action"])  # BUY / SELL
+        ts = pd.to_datetime(row["timestamp"], utc=True, errors="coerce")
+        amount = _safe_float(row["amount_usd"], 0.0)
+
+        if pd.isna(ts) or amount <= 0:
+            skipped += 1
             continue
-        
-        trades_with_price += 1
-        
-        # Count as executed if approved or submitted (will be auto-approved)
-        if status in ["approved", "submitted", "closed"]:
-            executed_count += 1
-            
-            # Simple PnL: assume 0.5% profit margin per trade
-            # (Agent decisions are based on signals, assume reasonable edge)
-            action = str(trade.get("action", "HOLD")).upper()
-            if action == "BUY":
-                pnl = amount * 0.005  # 0.5% profit
-            elif action == "SELL":
-                pnl = amount * 0.003  # 0.3% profit
-            else:
-                pnl = 0.0
-            
-            total_pnl += pnl
-    
-    return {
-        "total_assumed_pnl": round(total_pnl, 4),
-        "executed_or_closed_count": executed_count,
-        "trades_with_price": trades_with_price,
-        "average_pnl_per_trade": round(total_pnl / max(1, executed_count), 4),
-    }
 
-
-def _load_cached_prices(pair: str) -> Optional[pd.DataFrame]:
-    """Load cached OHLCV prices for a pair."""
-    cache_file = PAIR_MAPPING.get(pair)
-    if not cache_file:
-        return None
-    
-    file_path = DATA_CACHE_DIR / cache_file
-    if not file_path.exists():
-        return None
-    
-    try:
-        df = pd.read_csv(file_path, parse_dates=["datetime"])
-        df["timestamp"] = pd.to_datetime(df["datetime"], utc=True)
-        return df.sort_values("timestamp").reset_index(drop=True)
-    except Exception:
-        return None
-
-
-def _calculate_mtm_pnl(ledger: Dict[str, Any]) -> Dict[str, Any]:
-    """Calculate mark-to-market PnL using actual historical prices.
-    
-    For each trade:
-    - Load price data for that pair
-    - Find the closest timestamp at -or-before submission time (entry price)
-    - Find average price in the next available data points (exit price)
-    - Calculate PnL based on the actual price movement
-    
-    If no forward data exists, backtrack: use recent historical volatility
-    to estimate what the price would have been if we looked back N periods.
-    """
-    trades = ledger.get("trades", [])
-    if not trades:
-        return {
-            "total_mtm_pnl": 0.0,
-            "trades_with_mtm_price": 0,
-            "trades_without_mtm_data": 0,
-            "average_mtm_pnl_per_trade": 0.0,
-            "pnl_details": [],
-        }
-    
-    total_pnl = 0.0
-    trades_with_price = 0
-    trades_without_price = 0
-    pnl_details = []
-    
-    for trade in trades:
-        pair = trade.get("pair", "UNKNOWN")
-        submitted_at_str = trade.get("submitted_at")
-        amount = trade.get("amount_usd", 0.0)
-        action = str(trade.get("action", "HOLD")).upper()
-        ref_price = trade.get("reference_price", 0.0)
-        
-        if not submitted_at_str or not pair or amount <= 0 or ref_price <= 0:
-            trades_without_price += 1
-            continue
-        
-        try:
-            submitted_dt = pd.to_datetime(submitted_at_str)
-        except Exception:
-            trades_without_price += 1
-            continue
-        
-        # Load price data for this pair
-        prices = _load_cached_prices(pair)
+        prices = get_prices(pair)
         if prices is None or prices.empty:
-            trades_without_price += 1
+            skipped += 1
             continue
-        
-        # Strategy 1: Find data points closest to submission time & after
-        # Entry price: use reference price or closest price at/before submission
-        prices_at_or_before = prices[prices["timestamp"] <= submitted_dt]
-        if not prices_at_or_before.empty:
-            entry_price = prices_at_or_before.iloc[-1]["close"]
-        else:
-            entry_price = ref_price
-        
-        # Exit price: average of next available prices (could be empty if submission is very recent)
-        prices_after = prices[prices["timestamp"] > submitted_dt]
-        if prices_after.empty:
-            # Backtrack: if submission time is after all price data, 
-            # estimate based on recent volatility (last 48 hours)
-            if len(prices) >= 48:
-                recent_prices = prices.tail(48)["close"]
-                volatility = recent_prices.std() / recent_prices.mean()  # coefficient of variation
-                # Use 50% of recent volatility as estimated future price swing
-                if action == "BUY":
-                    exit_price = ref_price * (1 + volatility * 0.5)
-                else:
-                    exit_price = ref_price * (1 - volatility * 0.5)
-            else:
-                trades_without_price += 1
-                continue
-        else:
-            # Use average of next 5 days of available prices
-            forward_prices = prices_after.head(5 * 24)  # ~5 days of hourly data
-            exit_price = forward_prices["close"].mean()
-        
-        trades_with_price += 1
-        
-        # Calculate PnL
+
+        entry = _price_at_or_before(prices, ts)
+        # Use fixed forward horizon to convert decision into realized PnL sample.
+        exit_ts = ts + pd.Timedelta(hours=hold_hours)
+        exit_price = _price_at_or_after(prices, exit_ts)
+
+        if exit_price is None and entry is not None:
+            exit_price = _estimate_exit_price(prices, entry, hold_hours)
+
+        if entry is None or exit_price is None or entry <= 0:
+            skipped += 1
+            continue
+
         if action == "BUY":
-            # For BUY: gain if price goes UP
-            pnl = amount * (exit_price - entry_price) / entry_price if entry_price > 0 else 0.0
-        elif action == "SELL":
-            # For SELL: gain if price goes DOWN
-            pnl = amount * (entry_price - exit_price) / entry_price if entry_price > 0 else 0.0
-        else:
-            pnl = 0.0
-        
-        total_pnl += pnl
-        pnl_details.append({
-            "trade_id": trade.get("id"),
-            "pair": pair,
-            "action": action,
-            "amount_usd": amount,
-            "entry_price": round(entry_price, 4),
-            "exit_price": round(exit_price, 4),
-            "pnl": round(pnl, 6),
-            "pnl_pct": round((pnl / amount * 100), 3) if amount > 0 else 0.0,
-        })
-    
-    return {
-        "total_mtm_pnl": round(total_pnl, 4),
-        "trades_with_mtm_price": trades_with_price,
-        "trades_without_mtm_data": trades_without_price,
-        "average_mtm_pnl_per_trade": round(total_pnl / max(1, trades_with_price), 4) if trades_with_price > 0 else 0.0,
-        "pnl_details": pnl_details,
-    }
+            pnl = amount * (exit_price - entry) / entry
+        else:  # SELL
+            pnl = amount * (entry - exit_price) / entry
 
+        executed += 1
+        if pnl > 0:
+            wins += 1
 
+        equity += pnl
+        rows.append(
+            {
+                "timestamp": ts,
+                "pair": pair,
+                "action": action,
+                "amount_usd_scaled": int(row["amount_usd_scaled"]),
+                "amount_usd": amount,
+                "entry_price": entry,
+                "exit_price": exit_price,
+                "trade_pnl_usd": pnl,
+                "equity_usd": equity,
+            }
+        )
 
-def _compute_assumed_execution_pnl(ledger: Dict[str, Any]) -> Dict[str, Any]:
-    """Compute PnL assuming all submitted trades executed at reference_price.
-    
-    If execution_price is set, use it; otherwise use reference_price.
-    """
-    trades = ledger.get("trades", [])
-    if not trades:
-        return {
-            "total_assumed_pnl": 0.0,
-            "executed_or_closed_count": 0,
-            "trades_with_price": 0,
+    if not rows:
+        return pd.DataFrame(), {
+            "initial_capital_usd": initial_capital_usd,
+            "end_equity_usd": initial_capital_usd,
+            "total_pnl_usd": 0.0,
+            "total_return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "trades_executed": 0,
+            "trades_skipped_no_price": skipped,
+            "win_rate_pct": 0.0,
+            "average_trade_pnl_usd": 0.0,
+            "hold_hours": hold_hours,
         }
-    
-    total_pnl = 0.0
-    trades_with_price = 0
-    executed_count = 0
-    
-    for trade in trades:
-        amount = trade.get("amount_usd", 0.0)
-        status = str(trade.get("status", "")).lower()
-        
-        # Get execution or reference price
-        exec_price = trade.get("execution_price")
-        ref_price = trade.get("reference_price")
-        price = exec_price if exec_price else ref_price
-        
-        if not price or price <= 0:
-            continue
-        
-        trades_with_price += 1
-        
-        # Count as executed if approved or submitted (will be auto-approved)
-        if status in ["approved", "submitted", "closed"]:
-            executed_count += 1
-            
-            # Simple PnL: assume 0.5% profit margin per trade
-            # (Agent decisions are based on signals, assume reasonable edge)
-            action = str(trade.get("action", "HOLD")).upper()
-            if action == "BUY":
-                pnl = amount * 0.005  # 0.5% profit
-            elif action == "SELL":
-                pnl = amount * 0.003  # 0.3% profit
-            else:
-                pnl = 0.0
-            
-            total_pnl += pnl
-    
-    return {
-        "total_assumed_pnl": round(total_pnl, 4),
-        "executed_or_closed_count": executed_count,
-        "trades_with_price": trades_with_price,
-        "average_pnl_per_trade": round(total_pnl / max(1, executed_count), 4),
+
+    trades = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
+    trades["cum_return_pct"] = (trades["equity_usd"] / initial_capital_usd - 1.0) * 100.0
+    trades["running_peak"] = trades["equity_usd"].cummax()
+    trades["drawdown_pct"] = (trades["equity_usd"] / trades["running_peak"] - 1.0) * 100.0
+
+    total_pnl = float(trades["trade_pnl_usd"].sum())
+    end_equity = float(trades["equity_usd"].iloc[-1])
+
+    summary = {
+        "initial_capital_usd": float(initial_capital_usd),
+        "end_equity_usd": end_equity,
+        "total_pnl_usd": total_pnl,
+        "total_return_pct": (end_equity / initial_capital_usd - 1.0) * 100.0,
+        "max_drawdown_pct": float(trades["drawdown_pct"].min()),
+        "trades_executed": int(executed),
+        "trades_skipped_no_price": int(skipped),
+        "win_rate_pct": (wins / executed * 100.0) if executed > 0 else 0.0,
+        "average_trade_pnl_usd": total_pnl / executed if executed > 0 else 0.0,
+        "hold_hours": int(hold_hours),
     }
+    return trades, summary
 
 
-def _create_adjusted_portfolio(
-    portfolio: pd.DataFrame,
-    ledger_pnl_summary: Dict[str, Any],
-) -> pd.DataFrame:
-    """Create adjusted portfolio with virtual ledger PnL applied."""
-    total_pnl = _safe_float(
-        ledger_pnl_summary.get("total_assumed_pnl", ledger_pnl_summary.get("total_mtm_pnl", 0.0)),
-        0.0,
+def _resample_curve(trades: pd.DataFrame, freq: str = "1H") -> pd.DataFrame:
+    if trades.empty:
+        return pd.DataFrame()
+
+    curve = trades[["timestamp", "equity_usd", "cum_return_pct", "drawdown_pct"]].copy()
+    curve = curve.set_index("timestamp").sort_index()
+    sampled = curve.resample(freq).last().ffill().reset_index()
+    return sampled
+
+
+def _build_daily_notional(trades: pd.DataFrame) -> pd.DataFrame:
+    if trades.empty:
+        return pd.DataFrame()
+
+    x = trades.copy()
+    x["date"] = x["timestamp"].dt.floor("D")
+    out = (
+        x.groupby("date", as_index=False)
+        .agg(
+            trade_count=("action", "count"),
+            notional_usd=("amount_usd", "sum"),
+            pnl_usd=("trade_pnl_usd", "sum"),
+        )
+        .sort_values("date")
     )
-    if portfolio.empty or total_pnl == 0.0:
-        return portfolio.copy()
-    
-    adj = portfolio.copy()
-    total_pnl = float(total_pnl)
-    initial_assets = float(portfolio["total_assets"].iloc[0]) if len(portfolio) > 0 else 1.0
-    
-    # Apply assumed execution PnL to each portfolio snapshot
-    adj["adjusted_total_assets"] = adj["total_assets"] + total_pnl
-    adj["adjusted_realized_pnl"] = adj["realized_pnl"] + total_pnl
-    
-    # Recalculate return metrics for adjusted series
-    base = adj["adjusted_total_assets"].iloc[0] if len(adj) > 0 else 1.0
-    if base == 0:
-        base = 1.0
-    adj["adjusted_cum_return"] = adj["adjusted_total_assets"] / base - 1.0
-    adj["adjusted_cum_return_pct"] = adj["adjusted_cum_return"] * 100.0
-    adj["adjusted_running_peak"] = adj["adjusted_total_assets"].cummax()
-    adj["adjusted_drawdown"] = adj["adjusted_total_assets"] / adj["adjusted_running_peak"] - 1.0
-    adj["adjusted_drawdown_pct"] = adj["adjusted_drawdown"] * 100.0
-    
-    return adj
+    out["cum_notional_usd"] = out["notional_usd"].cumsum()
+    return out
+
+
+def _normalize_pair(pair: str) -> str:
+    return PAIR_ALIAS.get(str(pair), str(pair))
+
+
+def _build_pair_curves(trades: pd.DataFrame) -> pd.DataFrame:
+    if trades.empty:
+        return pd.DataFrame()
+
+    x = trades.copy()
+    x["pair_group"] = x["pair"].map(_normalize_pair)
+    x = x.sort_values("timestamp")
+    x["pair_cum_pnl_usd"] = x.groupby("pair_group")["trade_pnl_usd"].cumsum()
+
+    out = x[["timestamp", "pair_group", "pair_cum_pnl_usd"]].copy()
+    # Resample per pair to keep dashboard readable and aligned.
+    frames = []
+    for pair_name, g in out.groupby("pair_group"):
+        r = g.set_index("timestamp").sort_index().resample("1h").last().ffill().reset_index()
+        r["pair_group"] = pair_name
+        frames.append(r)
+
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
 
 
 def _render_html_dashboard(
-    portfolio: pd.DataFrame,
-    trade_daily: pd.DataFrame,
-    ledger_daily: pd.DataFrame,
-    trader_ledger_daily: pd.DataFrame,
+    sampled_curve: pd.DataFrame,
+    daily: pd.DataFrame,
+    pair_curves: pd.DataFrame,
     summary: Dict[str, Any],
     out_file: Path,
 ) -> None:
-    def _to_serializable_records(df: pd.DataFrame) -> list[dict[str, Any]]:
+    def to_records(df: pd.DataFrame) -> list[dict[str, Any]]:
         if df.empty:
             return []
         x = df.copy()
         for col in x.columns:
             if pd.api.types.is_datetime64_any_dtype(x[col]):
                 x[col] = x[col].dt.strftime("%Y-%m-%d %H:%M:%S")
-        # Keep payload small and predictable.
         return x.where(pd.notna(x), None).to_dict(orient="records")
 
-    # Create adjusted portfolio with virtual ledger PnL
-    ledger_pnl = summary.get("ledger_pnl_with_execution", {})
-    trader_size_pnl = summary.get("ledger_mtm_pnl_with_trader_size", {})
-    adjusted_portfolio = _create_adjusted_portfolio(portfolio, ledger_pnl)
-    trader_adjusted = _create_adjusted_portfolio(portfolio, trader_size_pnl)
-
-    if (
-        not adjusted_portfolio.empty
-        and not trader_adjusted.empty
-        and len(adjusted_portfolio) == len(trader_adjusted)
-    ):
-        adjusted_portfolio["trader_total_assets"] = trader_adjusted.get("adjusted_total_assets", adjusted_portfolio["total_assets"])
-        adjusted_portfolio["trader_cum_return_pct"] = trader_adjusted.get("adjusted_cum_return_pct", adjusted_portfolio["cum_return_pct"])
-        adjusted_portfolio["trader_drawdown_pct"] = trader_adjusted.get("adjusted_drawdown_pct", adjusted_portfolio["drawdown_pct"])
-    
-    p = adjusted_portfolio.copy()
-    if not p.empty:
-        p["timestamp"] = p["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    td = trade_daily.copy()
-    if not td.empty:
-        td["date"] = td["date"].dt.strftime("%Y-%m-%d")
-
-    ld = ledger_daily.copy()
-    if not ld.empty:
-        ld["date"] = ld["date"].dt.strftime("%Y-%m-%d")
-
-    tld = trader_ledger_daily.copy()
-    if not tld.empty:
-        tld["date"] = tld["date"].dt.strftime("%Y-%m-%d")
-
     payload = {
-        "portfolio": _to_serializable_records(p),
-        "trade_daily": _to_serializable_records(td),
-        "ledger_daily": _to_serializable_records(ld),
-        "trader_ledger_daily": _to_serializable_records(tld),
+        "curve": to_records(sampled_curve),
+        "daily": to_records(daily),
+        "pair_curves": to_records(pair_curves),
         "summary": summary,
     }
+
     payload_json = json.dumps(payload, ensure_ascii=False)
 
     html = """<!doctype html>
@@ -632,386 +409,209 @@ def _render_html_dashboard(
 <head>
     <meta charset=\"utf-8\" />
     <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
-    <title>RemoteData PnL Dashboard</title>
+    <title>RemoteData Decision PnL</title>
     <script src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>
     <style>
-        body {
-            margin: 0;
-            font-family: Segoe UI, Helvetica, Arial, sans-serif;
-            background: #f7f8fb;
-            color: #1f2937;
-        }
-        .wrap {
-            max-width: 1200px;
-            margin: 24px auto;
-            padding: 0 16px 24px;
-        }
-        .title {
-            font-size: 28px;
-            font-weight: 700;
-            margin: 0 0 12px;
-        }
-        .sub {
-            margin: 0 0 20px;
-            color: #4b5563;
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        .card {
-            background: white;
-            border-radius: 10px;
-            padding: 12px;
-            border: 1px solid #e5e7eb;
-        }
+        body { margin: 0; font-family: Segoe UI, Helvetica, Arial, sans-serif; background: #f7f8fb; color: #111827; }
+        .wrap { max-width: 1100px; margin: 20px auto; padding: 0 12px 20px; }
+        h1 { margin: 0 0 8px; font-size: 26px; }
+        .sub { margin: 0 0 14px; color: #4b5563; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 12px; }
+        .card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
         .k { font-size: 12px; color: #6b7280; }
-        .v { font-size: 20px; font-weight: 700; margin-top: 4px; }
-        .plot {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            padding: 8px;
-            margin-bottom: 12px;
-        }
+        .v { font-size: 19px; font-weight: 700; margin-top: 4px; }
+        .plot { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 6px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
     <div class=\"wrap\">
-        <h1 class=\"title\">RemoteData PnL Dashboard</h1>
-        <p class=\"sub\">Generated from remotedata trade logs and portfolio snapshots.</p>
+        <h1>Decision-Based PnL Dashboard</h1>
+        <p class=\"sub\">Only from full_states_log trader_investment_decision, with size mapping 220->10%, 22->5%.</p>
         <div class=\"grid\" id=\"cards\"></div>
-        <div class=\"plot\"><div id=\"equity\" style=\"height:350px;\"></div></div>
+        <div class=\"plot\"><div id=\"equity\" style=\"height:340px;\"></div></div>
         <div class=\"plot\"><div id=\"ret\" style=\"height:320px;\"></div></div>
-        <div class=\"plot\"><div id=\"dd\" style=\"height:320px;\"></div></div>
-        <div class=\"plot\"><div id=\"trade\" style=\"height:360px;\"></div></div>
+        <div class=\"plot\"><div id=\"pair\" style=\"height:340px;\"></div></div>
+        <div class=\"plot\"><div id=\"notional\" style=\"height:320px;\"></div></div>
     </div>
 
     <script>
         const data = __PAYLOAD_JSON__;
         const s = data.summary || {};
-        const pm = s.portfolio_metrics || {};
-        const acc = s.ledger_account || {};
-        const ledger_pnl = s.ledger_pnl_with_execution || {};
-        const trader_meta = s.trader_proposal_metrics || {};
-        const trader_mtm = s.ledger_mtm_pnl_with_trader_size || {};
+        const m = s.backtest_metrics || {};
+        const d = s.decision_metrics || {};
 
         const cards = [
-            ["End Total Assets", (pm.end_total_assets ?? 0).toFixed ? `$${pm.end_total_assets.toFixed(2)}` : "N/A"],
-            ["Total PnL (Actual)", (pm.total_pnl_usd ?? 0).toFixed ? `$${pm.total_pnl_usd.toFixed(2)}` : "N/A"],
-            ["Total PnL (w/ Mock Exec)", (ledger_pnl.total_assumed_pnl ?? 0).toFixed ? `$${ledger_pnl.total_assumed_pnl.toFixed(4)}` : "N/A"],
-            ["Total PnL (Trader Size, MtM)", (trader_mtm.total_mtm_pnl ?? 0).toFixed ? `$${trader_mtm.total_mtm_pnl.toFixed(4)}` : "N/A"],
-            ["Adjusted Balance", (ledger_pnl.adjusted_balance_usd ?? 0).toFixed ? `$${ledger_pnl.adjusted_balance_usd.toFixed(2)}` : "N/A"],
-            ["Adjusted Balance (Trader Size)", (trader_mtm.adjusted_balance_usd ?? 0).toFixed ? `$${trader_mtm.adjusted_balance_usd.toFixed(2)}` : "N/A"],
-            ["Total Return (Actual)", (pm.total_return_pct ?? 0).toFixed ? `${pm.total_return_pct.toFixed(3)}%` : "N/A"],
-            ["Max Drawdown", (pm.max_drawdown_pct ?? 0).toFixed ? `${pm.max_drawdown_pct.toFixed(3)}%` : "N/A"],
-            ["Trader Avg Open Size", (trader_meta.average_trader_proposed_amount_usd ?? 0).toFixed ? `$${trader_meta.average_trader_proposed_amount_usd.toFixed(2)}` : "N/A"],
-            ["Ledger Balance", (acc.balance_usd ?? 0).toFixed ? `$${acc.balance_usd.toFixed(2)}` : "N/A"],
-            ["Submitted Trades", String(acc.total_trades_submitted ?? 0)],
+            ["Initial Capital", `$${(m.initial_capital_usd ?? 0).toFixed(2)}`],
+            ["End Equity", `$${(m.end_equity_usd ?? 0).toFixed(2)}`],
+            ["Total PnL", `$${(m.total_pnl_usd ?? 0).toFixed(2)}`],
+            ["Total Return", `${(m.total_return_pct ?? 0).toFixed(3)}%`],
+            ["Max Drawdown", `${(m.max_drawdown_pct ?? 0).toFixed(3)}%`],
+            ["Executed Trades", String(m.trades_executed ?? 0)],
+            ["Used Decisions", String(d.used_decisions ?? 0)],
+            ["22 Count / 220 Count", `${d.scaled_22_count ?? 0} / ${d.scaled_220_count ?? 0}`],
         ];
 
         document.getElementById("cards").innerHTML = cards
             .map(([k, v]) => `<div class=\"card\"><div class=\"k\">${k}</div><div class=\"v\">${v}</div></div>`)
             .join("");
 
-        const p = data.portfolio || [];
-        const px = p.map(r => r.timestamp);
+        const curve = data.curve || [];
+        const cx = curve.map(r => r.timestamp);
 
-        // Equity curve: show both actual and adjusted (with virtual ledger PnL)
-        const equityTraces = [{
-            x: px,
-            y: p.map(r => r.total_assets),
+        Plotly.newPlot("equity", [{
+            x: cx,
+            y: curve.map(r => r.equity_usd),
             type: "scatter",
-            mode: "lines+markers",
-            name: "total_assets (actual)",
-            line: {color: "#6b7280", width: 1, dash: "dash"}
-        }];
-        
-        // Add adjusted line if it has different values
-        if (p.some(r => r.adjusted_total_assets !== undefined && r.adjusted_total_assets !== r.total_assets)) {
-            equityTraces.push({
-                x: px,
-                y: p.map(r => r.adjusted_total_assets || r.total_assets),
+            mode: "lines",
+            name: "equity_usd",
+            line: {color: "#2563eb", width: 2}
+        }], {
+            title: "Resampled Equity Curve",
+            margin: {l: 50, r: 20, t: 40, b: 40}
+        }, {responsive: true});
+
+        Plotly.newPlot("ret", [
+            {
+                x: cx,
+                y: curve.map(r => r.cum_return_pct),
+                type: "scatter",
+                mode: "lines",
+                name: "cum_return_pct",
+                line: {color: "#059669", width: 2}
+            },
+            {
+                x: cx,
+                y: curve.map(r => r.drawdown_pct),
+                type: "scatter",
+                mode: "lines",
+                name: "drawdown_pct",
+                line: {color: "#dc2626", width: 2}
+            }
+        ], {
+            title: "Return and Drawdown (%)",
+            margin: {l: 50, r: 20, t: 40, b: 40}
+        }, {responsive: true});
+
+        const pairCurves = data.pair_curves || [];
+        const groups = [...new Set(pairCurves.map(r => r.pair_group))];
+        const palette = ["#2563eb", "#dc2626", "#059669", "#7c3aed", "#f59e0b", "#0ea5e9"];
+        const pairTraces = groups.map((g, idx) => {
+            const rows = pairCurves.filter(r => r.pair_group === g);
+            return {
+                x: rows.map(r => r.timestamp),
+                y: rows.map(r => r.pair_cum_pnl_usd),
+                type: "scatter",
+                mode: "lines",
+                name: g,
+                line: {color: palette[idx % palette.length], width: 2}
+            };
+        });
+
+        Plotly.newPlot("pair", pairTraces, {
+            title: "PnL Curve by Pair (ETHUSD + WETH/USDC merged)",
+            margin: {l: 50, r: 20, t: 40, b: 40},
+            yaxis: {title: "Cumulative PnL (USD)"}
+        }, {responsive: true});
+
+        const daily = data.daily || [];
+        Plotly.newPlot("notional", [
+            {
+                x: daily.map(r => r.date),
+                y: daily.map(r => r.notional_usd),
+                type: "bar",
+                name: "daily_notional_usd",
+                marker: {color: "#7c3aed"}
+            },
+            {
+                x: daily.map(r => r.date),
+                y: daily.map(r => r.pnl_usd),
                 type: "scatter",
                 mode: "lines+markers",
-                name: "total_assets (w/ mock execution)",
-                line: {color: "#1f77b4", width: 2}
-            });
-        }
-
-        if (p.some(r => r.trader_total_assets !== undefined && r.trader_total_assets !== r.total_assets)) {
-            equityTraces.push({
-                x: px,
-                y: p.map(r => r.trader_total_assets || r.total_assets),
-                type: "scatter",
-                mode: "lines+markers",
-                name: "total_assets (trader size + MtM)",
-                line: {color: "#8b5cf6", width: 2}
-            });
-        }
-        
-        Plotly.newPlot("equity", equityTraces, {title: "Equity Curve", margin: {l: 50, r: 20, t: 40, b: 40}}, {responsive: true});
-
-        // Return curve: show both actual and adjusted
-        const retTraces = [{
-            x: px,
-            y: p.map(r => r.cum_return_pct),
-            type: "scatter",
-            mode: "lines+markers",
-            name: "return % (actual)",
-            line: {color: "#9ca3af", width: 1, dash: "dash"}
-        }];
-        
-        if (p.some(r => r.adjusted_cum_return_pct !== undefined && r.adjusted_cum_return_pct !== r.cum_return_pct)) {
-            retTraces.push({
-                x: px,
-                y: p.map(r => r.adjusted_cum_return_pct || r.cum_return_pct),
-                type: "scatter",
-                mode: "lines+markers",
-                name: "return % (w/ mock execution)",
-                line: {color: "#2ca02c", width: 2}
-            });
-        }
-
-        if (p.some(r => r.trader_cum_return_pct !== undefined && r.trader_cum_return_pct !== r.cum_return_pct)) {
-            retTraces.push({
-                x: px,
-                y: p.map(r => r.trader_cum_return_pct || r.cum_return_pct),
-                type: "scatter",
-                mode: "lines+markers",
-                name: "return % (trader size + MtM)",
-                line: {color: "#7c3aed", width: 2}
-            });
-        }
-        
-        Plotly.newPlot("ret", retTraces, {title: "Cumulative Return (%)", margin: {l: 50, r: 20, t: 40, b: 40}}, {responsive: true});
-
-        // Drawdown curve: show both actual and adjusted
-        const ddTraces = [{
-            x: px,
-            y: p.map(r => r.drawdown_pct),
-            type: "scatter",
-            mode: "lines+markers",
-            fill: "tozeroy",
-            name: "drawdown % (actual)",
-            line: {color: "#a3a3a3", width: 1, dash: "dash"}
-        }];
-        
-        if (p.some(r => r.adjusted_drawdown_pct !== undefined && r.adjusted_drawdown_pct !== r.drawdown_pct)) {
-            ddTraces.push({
-                x: px,
-                y: p.map(r => r.adjusted_drawdown_pct || r.drawdown_pct),
-                type: "scatter",
-                mode: "lines+markers",
-                fill: "tozeroy",
-                name: "drawdown % (w/ mock execution)",
-                line: {color: "#d62728", width: 2}
-            });
-        }
-
-        if (p.some(r => r.trader_drawdown_pct !== undefined && r.trader_drawdown_pct !== r.drawdown_pct)) {
-            ddTraces.push({
-                x: px,
-                y: p.map(r => r.trader_drawdown_pct || r.drawdown_pct),
-                type: "scatter",
-                mode: "lines+markers",
-                fill: "tozeroy",
-                name: "drawdown % (trader size + MtM)",
-                line: {color: "#7c3aed", width: 2}
-            });
-        }
-        
-        Plotly.newPlot("dd", ddTraces, {title: "Drawdown (%)", margin: {l: 50, r: 20, t: 40, b: 40}}, {responsive: true});
-
-        const td = data.trade_daily || [];
-        const ld = data.ledger_daily || [];
-        const tld = data.trader_ledger_daily || [];
-        const useTd = td.length > 0;
-        const tx = (useTd ? td : ld).map(r => r.date);
-        const countSeries = useTd ? td.map(r => r.trade_count) : ld.map(r => r.ledger_trade_count);
-        const amountSeries = useTd ? td.map(r => r.cum_notional_usd) : ld.map(r => r.ledger_cum_submitted_usd);
-
-        const tradeTraces = [
-            {x: tx, y: countSeries, type: "bar", name: "daily_count", marker: {color: "#9467bd"}},
-            {x: tx, y: amountSeries, type: "scatter", mode: "lines+markers", name: "cumulative_usd", yaxis: "y2", line: {color: "#ff7f0e"}}
-        ];
-
-        if (tld.length > 0) {
-            tradeTraces.push({
-                x: tld.map(r => r.date),
-                y: tld.map(r => r.ledger_cum_submitted_usd),
-                type: "scatter",
-                mode: "lines+markers",
-                name: "cumulative_usd (trader proposed)",
+                name: "daily_pnl_usd",
                 yaxis: "y2",
-                line: {color: "#7c3aed", width: 2}
-            });
-        }
-
-        Plotly.newPlot("trade", tradeTraces, {
-            title: useTd ? "Daily Trades (DB)" : "Daily Trades (Ledger)",
-            yaxis: {title: "Count"},
-            yaxis2: {title: "USD", overlaying: "y", side: "right"},
+                line: {color: "#f59e0b", width: 2}
+            }
+        ], {
+            title: "Daily Notional and PnL",
+            yaxis: {title: "Notional (USD)"},
+            yaxis2: {title: "PnL (USD)", overlaying: "y", side: "right"},
             margin: {l: 50, r: 50, t: 40, b: 40}
         }, {responsive: true});
     </script>
 </body>
 </html>
 """
+
     html = html.replace("__PAYLOAD_JSON__", payload_json)
     out_file.write_text(html, encoding="utf-8")
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except Exception:
-        return default
-
-
-def _build_summary(
-    portfolio: pd.DataFrame,
-    trades: pd.DataFrame,
-    ledger: Dict[str, Any],
-    trader_proposals: pd.DataFrame,
-) -> Dict[str, Any]:
-    account = ledger.get("account", {})
-
-    summary: Dict[str, Any] = {
-        "data_source": {
-            "virtual_ledger": str(LEDGER_JSON),
-            "portfolio_db": str(PORTFOLIO_DB),
-        },
-        "ledger_account": {
-            "balance_usd": _safe_float(account.get("balance_usd")),
-            "initial_capital_usd": _safe_float(account.get("initial_capital_usd")),
-            "realized_pnl_usd": _safe_float(account.get("realized_pnl_usd")),
-            "total_trades_submitted": int(account.get("total_trades_submitted", 0)),
-            "total_trades_approved": int(account.get("total_trades_approved", 0)),
-            "total_trades_rejected": int(account.get("total_trades_rejected", 0)),
-        },
-        "portfolio_metrics": {},
-        "trade_history_metrics": {},
-        "ledger_pnl_with_execution": {},
-        "ledger_pnl_with_trader_size": {},
-        "ledger_mtm_pnl_with_trader_size": {},
-        "trader_proposal_metrics": {},
-        "analysis_assumptions": {
-            "open_or_submitted_treated_as_executed": True,
-            "mark_to_market_pricing_applied": False,
-            "reference_price_used_for_mock_execution": True,
-            "trader_proposed_open_size_applied": False,
-        },
-    }
-
-    if not portfolio.empty:
-        first_assets = float(portfolio["total_assets"].iloc[0])
-        last_assets = float(portfolio["total_assets"].iloc[-1])
-        summary["portfolio_metrics"] = {
-            "samples": int(len(portfolio)),
-            "start_time": portfolio["timestamp"].iloc[0].isoformat() if pd.notna(portfolio["timestamp"].iloc[0]) else None,
-            "end_time": portfolio["timestamp"].iloc[-1].isoformat() if pd.notna(portfolio["timestamp"].iloc[-1]) else None,
-            "start_total_assets": first_assets,
-            "end_total_assets": last_assets,
-            "total_pnl_usd": last_assets - first_assets,
-            "total_return_pct": (last_assets / first_assets - 1.0) * 100.0 if first_assets != 0 else None,
-            "max_drawdown_pct": float(portfolio["drawdown_pct"].min()),
-            "latest_realized_pnl": float(portfolio["realized_pnl"].iloc[-1]),
-            "latest_unrealized_pnl": float(portfolio["unrealized_pnl"].iloc[-1]),
-        }
-
-    if not trades.empty:
-        status_series = trades["status"].astype(str).str.lower()
-        effective_series = trades["effective_execution_status"].astype(str).str.lower()
-        summary["trade_history_metrics"] = {
-            "rows": int(len(trades)),
-            "unique_tickers": sorted({str(v) for v in trades["ticker"].dropna().unique().tolist()}),
-            "notional_sum_usd": float(trades["notional_usd"].sum()),
-            "closed_trade_count": int((status_series == "closed").sum()),
-            "open_trade_count": int((status_series == "open").sum()),
-            "executed_or_assumed_executed_count": int((effective_series != "rejected").sum()),
-            "realized_pnl_sum": float(trades["realized_pnl"].fillna(0).sum()),
-        }
-    
-    # Add PnL calculation based on virtual ledger with reference prices
-    ledger_execution_pnl = _compute_assumed_execution_pnl(ledger)
-    summary["ledger_pnl_with_execution"] = ledger_execution_pnl
-    initial_capital = _safe_float(account.get("initial_capital_usd"), 100000.0)
-    summary["ledger_pnl_with_execution"]["adjusted_balance_usd"] = initial_capital - ledger_execution_pnl.get("total_assumed_pnl", 0.0)
-    summary["ledger_pnl_with_execution"]["adjusted_return_pct"] = (
-        ledger_execution_pnl.get("total_assumed_pnl", 0.0) / initial_capital * 100.0
-    )
-    
-    # Add mark-to-market PnL based on actual historical prices
-    mtm_pnl = _calculate_mtm_pnl(ledger)
-    summary["ledger_mtm_pnl"] = mtm_pnl
-    summary["ledger_mtm_pnl"]["adjusted_balance_usd"] = initial_capital - mtm_pnl.get("total_mtm_pnl", 0.0)
-    summary["ledger_mtm_pnl"]["adjusted_return_pct"] = (
-        mtm_pnl.get("total_mtm_pnl", 0.0) / initial_capital * 100.0
-    )
-    
-    # Update analysis assumption
-    if mtm_pnl.get("trades_with_mtm_price", 0) > 0:
-        summary["analysis_assumptions"]["mark_to_market_pricing_applied"] = True
-
-    # Recalculate with trader proposed opening size from full_states logs.
-    trader_sized_ledger, trader_metrics = _apply_trader_proposed_sizes_to_ledger(ledger, trader_proposals)
-    summary["trader_proposal_metrics"] = trader_metrics
-
-    trader_assumed_pnl = _compute_assumed_execution_pnl(trader_sized_ledger)
-    summary["ledger_pnl_with_trader_size"] = trader_assumed_pnl
-    summary["ledger_pnl_with_trader_size"]["adjusted_balance_usd"] = initial_capital - trader_assumed_pnl.get("total_assumed_pnl", 0.0)
-    summary["ledger_pnl_with_trader_size"]["adjusted_return_pct"] = (
-        trader_assumed_pnl.get("total_assumed_pnl", 0.0) / initial_capital * 100.0
-    )
-
-    trader_mtm_pnl = _calculate_mtm_pnl(trader_sized_ledger)
-    summary["ledger_mtm_pnl_with_trader_size"] = trader_mtm_pnl
-    summary["ledger_mtm_pnl_with_trader_size"]["adjusted_balance_usd"] = initial_capital - trader_mtm_pnl.get("total_mtm_pnl", 0.0)
-    summary["ledger_mtm_pnl_with_trader_size"]["adjusted_return_pct"] = (
-        trader_mtm_pnl.get("total_mtm_pnl", 0.0) / initial_capital * 100.0
-    )
-
-    if trader_metrics.get("trades_matched", 0) > 0:
-        summary["analysis_assumptions"]["trader_proposed_open_size_applied"] = True
-
-    return summary
 
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    ledger = _load_virtual_ledger(LEDGER_JSON)
-    portfolio = _load_portfolio_state(PORTFOLIO_DB)
-    trade_history = _load_trade_history(PORTFOLIO_DB)
-    trade_daily = _build_trade_activity(trade_history)
-    ledger_daily = _build_ledger_activity(ledger)
-    trader_proposals = _load_trader_proposals(EVAL_RESULTS_DIR)
-    trader_sized_ledger, _ = _apply_trader_proposed_sizes_to_ledger(ledger, trader_proposals)
-    trader_ledger_daily = _build_ledger_activity(trader_sized_ledger)
+    source_root = REMOTE_EVAL_RESULTS_DIR if REMOTE_EVAL_RESULTS_DIR.exists() else EVAL_RESULTS_DIR
+    raw_decisions = _load_trader_decisions(source_root)
+    decisions, decision_metrics = _apply_size_rules(raw_decisions)
+
+    trades, backtest_metrics = _backtest_from_decisions(
+        decisions,
+        initial_capital_usd=100000.0,
+        hold_hours=24,
+    )
+
+    sampled_curve = _resample_curve(trades, freq="1h")
+    daily = _build_daily_notional(trades)
+    pair_curves = _build_pair_curves(trades)
+
+    pair_metrics: Dict[str, Any] = {}
+    if not pair_curves.empty:
+        last_rows = (
+            pair_curves.sort_values("timestamp")
+            .groupby("pair_group", as_index=False)
+            .tail(1)
+        )
+        for _, row in last_rows.iterrows():
+            pair_metrics[str(row["pair_group"])] = {
+                "final_cum_pnl_usd": round(_safe_float(row["pair_cum_pnl_usd"], 0.0), 6)
+            }
+
+    summary = {
+        "data_source": {
+            "eval_results_root": str(source_root),
+            "decision_field": "trader_investment_decision",
+            "action_used": ["BUY", "SELL"],
+            "size_rules_usd": {"220": 10000.0, "22": 5000.0},
+            "sampling": "1h",
+        },
+        "decision_metrics": decision_metrics,
+        "backtest_metrics": backtest_metrics,
+        "pair_metrics": pair_metrics,
+        "pair_alias": {
+            "ETHUSD": "ETH_COMBINED",
+            "WETH/USDC": "ETH_COMBINED",
+        },
+    }
 
     chart_path = OUTPUT_DIR / "remotedata_pnl_dashboard.html"
     summary_path = OUTPUT_DIR / "remotedata_pnl_summary.json"
-    portfolio_csv_path = OUTPUT_DIR / "portfolio_timeseries.csv"
-    trades_csv_path = OUTPUT_DIR / "trade_history.csv"
+    trades_csv_path = OUTPUT_DIR / "decision_trade_pnl.csv"
+    curve_csv_path = OUTPUT_DIR / "equity_curve_1h.csv"
+    pair_curve_csv_path = OUTPUT_DIR / "pair_pnl_curve_1h.csv"
 
-    summary = _build_summary(portfolio, trade_history, ledger, trader_proposals)
-    _render_html_dashboard(portfolio, trade_daily, ledger_daily, trader_ledger_daily, summary, chart_path)
+    _render_html_dashboard(sampled_curve, daily, pair_curves, summary, chart_path)
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
-
-    if not portfolio.empty:
-        portfolio.to_csv(portfolio_csv_path, index=False)
-    if not trade_history.empty:
-        trade_history.to_csv(trades_csv_path, index=False)
+    if not trades.empty:
+        trades.to_csv(trades_csv_path, index=False)
+    if not sampled_curve.empty:
+        sampled_curve.to_csv(curve_csv_path, index=False)
+    if not pair_curves.empty:
+        pair_curves.to_csv(pair_curve_csv_path, index=False)
 
     print(f"Saved chart: {chart_path}")
     print(f"Saved summary: {summary_path}")
-    print(f"Portfolio samples: {len(portfolio)}")
-    print(f"Trade rows: {len(trade_history)}")
+    print(f"Decisions used: {decision_metrics.get('used_decisions', 0)}")
+    print(f"Trades executed: {backtest_metrics.get('trades_executed', 0)}")
 
 
 if __name__ == "__main__":
