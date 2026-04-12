@@ -34,7 +34,7 @@ class Propagator:
         portfolio = self.portfolio_manager.load_latest_portfolio()
         
         # Generate global portfolio context for all agents
-        cash_usd = portfolio.get("cash_usd", 10000.0)
+        cash_usd = portfolio.get("cash_usd", 100000.0)
         position_usd = portfolio.get("position_usd", 0.0)
         unrealized_pnl = portfolio.get("unrealized_pnl", 0.0)
         
@@ -51,9 +51,9 @@ class Propagator:
             f"- Unrealized PnL: ${unrealized_pnl:.2f} ({drawdown_pct:+.2f}%)\n"
             f"- Realized PnL (cumulative): ${portfolio.get('realized_pnl', 0.0):.2f}\n"
             f"\nRisk Constraints:\n"
-            f"- Maximum single order size: 10% of cash (${cash_usd * 0.10:.2f})\n"
-            f"- Maximum total position: 20% of cash (${cash_usd * 0.20:.2f})\n"
-            f"- Current position utilization: {(position_usd / (cash_usd * 0.20) * 100) if cash_usd > 0 else 0:.1f}%"
+            f"- RiskEngine is the only source of executable sizing/limits\n"
+            f"- Trader should propose conviction-based sizing in USD cents\n"
+            f"- Current position utilization: {(position_usd / total_assets * 100) if total_assets > 0 else 0:.1f}%"
         )
 
         return {

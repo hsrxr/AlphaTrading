@@ -129,6 +129,7 @@ class OnChainIntegrator:
         checkpoint_score: int = 75,
         enable_simulation: bool = True,
         submit_hold_decisions: bool = False,
+        auto_approve_on_timeout: bool = True,
         checkpoint_notes_prefix: str = "TradingAgent decision:",
         checkpoint_log_file: str = "checkpoints.jsonl",
         ledger_path: str = "./trade_memory/virtual_ledger.json",
@@ -142,6 +143,8 @@ class OnChainIntegrator:
             checkpoint_score: Default score for checkpoints (0-100)
             enable_simulation: If True, simulate intents before submission
             submit_hold_decisions: If True, submit HOLD actions to RiskRouter
+            auto_approve_on_timeout: If True, when no on-chain feedback arrives in
+                the wait window, treat the trade as approved for local bookkeeping.
             checkpoint_notes_prefix: Prefix for checkpoint notes
             checkpoint_log_file: Local JSONL file for checkpoint audit trail
             ledger_path: Path to virtual ledger JSON file
@@ -152,6 +155,7 @@ class OnChainIntegrator:
         self.checkpoint_score = max(0, min(100, int(checkpoint_score)))
         self.enable_simulation = enable_simulation
         self.submit_hold_decisions = bool(submit_hold_decisions)
+        self.auto_approve_on_timeout = bool(auto_approve_on_timeout)
         self.checkpoint_notes_prefix = checkpoint_notes_prefix
         self.checkpoint_log_file = checkpoint_log_file
         self.ledger = create_virtual_ledger(ledger_path=ledger_path)
@@ -276,14 +280,16 @@ class OnChainIntegrator:
             result.trade_intent_hash = self._normalize_tx_hash(tx_result.tx_hash)
             result.trade_submitted = True
             
-            # Record trade in virtual ledger
+            # Record trade in virtual ledger with reference price for mock execution
             confidence = float(decision.get("confidence", 0.5))
             notes_raw = decision.get("reason", "")
+            reference_price = current_price_usd_scaled / 100.0 if current_price_usd_scaled > 0 else None
             trade_id = self.ledger.submit_trade(
                 agent_id=self.agent_id,
                 pair=pair,
                 action=action,
                 amount_usd=amount_usd_scaled / 100.0,
+                reference_price=reference_price,
                 intent_hash=result.trade_intent_hash,
                 confidence=confidence,
                 notes=str(notes_raw)[:500],
@@ -428,16 +434,30 @@ class OnChainIntegrator:
                     f"No feedback received for trade {intent_hash[:16]}... "
                     f"within {max_wait_seconds}s. Explicit reason: no matching TradeApproved/TradeRejected event was observed in polling window (possible pending tx, RPC indexing lag, or event/agent mismatch)."
                 )
-                if self.ledger.mark_trade_feedback_timeout(
-                    intent_hash,
-                    reason="RiskRouter feedback timeout; trade remains pending in virtual ledger",
-                ):
-                    logger.info(
-                        f"Virtual ledger marked trade as timeout-pending: {intent_hash[:16]}..."
-                    )
                 if not submission_result.metadata:
                     submission_result.metadata = {}
                 submission_result.metadata["feedback_timeout"] = True
+                if self.auto_approve_on_timeout:
+                    submission_result.trade_approved = True
+                    submission_result.metadata["auto_approved_on_timeout"] = True
+                    # Get the trade record to retrieve reference_price for mock execution
+                    trade_record = self.ledger.get_trade_by_hash(intent_hash)
+                    reference_price = trade_record.get("reference_price") if trade_record else None
+                    if self.ledger.approve_trade(intent_hash, execution_price=reference_price):
+                        logger.info(
+                            "No on-chain feedback in window; auto-approved locally with mock execution: %s..., balance=$%.2f, reference_price=$%.4f",
+                            intent_hash[:16],
+                            self.ledger.get_balance(),
+                            reference_price if reference_price else 0.0,
+                        )
+                else:
+                    if self.ledger.mark_trade_feedback_timeout(
+                        intent_hash,
+                        reason="RiskRouter feedback timeout; trade remains pending in virtual ledger",
+                    ):
+                        logger.info(
+                            f"Virtual ledger marked trade as timeout-pending: {intent_hash[:16]}..."
+                        )
         
         except Exception as e:
             logger.error(f"Error waiting for feedback: {e}", exc_info=True)
@@ -488,6 +508,7 @@ def create_on_chain_integrator(
     agent_wallet: Optional[str] = None,
     enable_simulation: bool = True,
     submit_hold_decisions: bool = False,
+    auto_approve_on_timeout: Optional[bool] = None,
 ) -> Optional[OnChainIntegrator]:
     """Factory function to create an OnChainIntegrator from environment variables.
     
@@ -513,6 +534,11 @@ def create_on_chain_integrator(
     agent_key = agent_private_key or os.getenv("AGENT_WALLET_PRIVATE_KEY")
     agent_id = agent_id or os.getenv("AGENT_ID")
     agent_wallet = agent_wallet or os.getenv("AGENT_WALLET_ADDRESS")
+    if auto_approve_on_timeout is None:
+        raw_auto_approve = os.getenv("ON_CHAIN_AUTO_APPROVE_WITHOUT_FEEDBACK", "true")
+        auto_approve_on_timeout = str(raw_auto_approve).strip().lower() in {
+            "1", "true", "yes", "on"
+        }
     
     if not all([rpc_url, operator_key, agent_key, agent_id, agent_wallet]):
         missing = []
@@ -546,6 +572,7 @@ def create_on_chain_integrator(
             agent_wallet=agent_wallet,
             enable_simulation=enable_simulation,
             submit_hold_decisions=submit_hold_decisions,
+            auto_approve_on_timeout=bool(auto_approve_on_timeout),
         )
         
         logger.info(f"OnChainIntegrator initialized for agent {agent_id}")

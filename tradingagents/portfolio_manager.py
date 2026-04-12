@@ -144,8 +144,8 @@ class PortfolioManager:
 
         Priority:
         1) TRADING_INITIAL_CASH_USD env var
-        2) agent-id.json -> claim.balanceEth converted to USD
-        3) fallback 10000.0
+        2) agent-id.json -> claim.balanceEth converted to USD (only if TRADING_USE_CLAIM_BALANCE=true)
+        3) fallback 100000.0
         """
         raw_env = os.getenv("TRADING_INITIAL_CASH_USD")
         if raw_env:
@@ -156,19 +156,26 @@ class PortfolioManager:
             except (TypeError, ValueError):
                 pass
 
-        balance_eth = self._read_claim_balance_eth()
-        if balance_eth is not None:
-            eth_usd_rate = self._resolve_eth_usd_rate()
-            converted = balance_eth * eth_usd_rate
-            logger.info(
-                "Resolved initial capital from claim balance: %.6f ETH * %.2f USD/ETH = %.2f USD",
-                balance_eth,
-                eth_usd_rate,
-                converted,
-            )
-            return converted
+        use_claim_balance = str(os.getenv("TRADING_USE_CLAIM_BALANCE", "false")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if use_claim_balance:
+            balance_eth = self._read_claim_balance_eth()
+            if balance_eth is not None:
+                eth_usd_rate = self._resolve_eth_usd_rate()
+                converted = balance_eth * eth_usd_rate
+                logger.info(
+                    "Resolved initial capital from claim balance: %.6f ETH * %.2f USD/ETH = %.2f USD",
+                    balance_eth,
+                    eth_usd_rate,
+                    converted,
+                )
+                return converted
 
-        return 10000.0
+        return 100000.0
 
     def load_latest_portfolio(self) -> Dict[str, Any]:
         """Load the latest portfolio state from database.
@@ -190,17 +197,17 @@ class PortfolioManager:
             cash_usd, positions_json, unrealized_pnl, realized_pnl, timestamp = row
             positions = json.loads(positions_json) if positions_json else {}
 
-            # Auto-heal legacy rows that mistakenly stored claim ETH directly in cash_usd.
+            # Auto-heal legacy rows with tiny cash baseline to configured initial capital.
             claim_eth = self._read_claim_balance_eth()
             expected_usd = self.get_initial_capital()
             if (
-                claim_eth is not None
-                and abs(float(cash_usd) - float(claim_eth)) < 1e-9
+                expected_usd >= 1000.0
+                and float(cash_usd) < expected_usd * 0.01
                 and expected_usd >= 1.0
                 and not positions
             ):
                 logger.warning(
-                    "Detected legacy portfolio baseline using ETH as USD (cash_usd=%.6f). "
+                    "Detected tiny/legacy portfolio baseline (cash_usd=%.6f). "
                     "Auto-correcting to %.2f USD.",
                     cash_usd,
                     expected_usd,
@@ -251,7 +258,7 @@ class PortfolioManager:
             portfolio_state: Dict with cash_usd, positions, unrealized_pnl, realized_pnl
         """
         timestamp = portfolio_state.get("timestamp", datetime.utcnow().isoformat())
-        cash_usd = portfolio_state.get("cash_usd", 10000.0)
+        cash_usd = portfolio_state.get("cash_usd", 100000.0)
         positions = portfolio_state.get("positions", {})
         unrealized_pnl = portfolio_state.get("unrealized_pnl", 0.0)
         realized_pnl = portfolio_state.get("realized_pnl", 0.0)

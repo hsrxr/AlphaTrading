@@ -120,28 +120,44 @@ def create_risk_engine():
         # Risk management parameters
         max_position_pct = 0.40
         max_single_order_pct = 0.10
-        hard_max_trade_usd = 500.0  # RiskRouter default limit from shared contract docs
 
-        # For risk calculations, use total_assets if cash is depleted but positions exist
-        # This allows trading from held positions
+        # Optional absolute cap. If unset (default), sizing follows percentage rules only.
+        raw_hard_cap = os.getenv("TRADING_HARD_MAX_TRADE_USD", "").strip()
+        hard_max_trade_usd = None
+        if raw_hard_cap:
+            try:
+                parsed_hard_cap = float(raw_hard_cap)
+                if parsed_hard_cap > 0:
+                    hard_max_trade_usd = parsed_hard_cap
+            except (TypeError, ValueError):
+                hard_max_trade_usd = None
+
+        # Use total capital baseline for sizing (requested behavior):
+        # per-order size is based on total funds rather than residual cash.
+        # Prefer initial_capital as stable baseline; fallback to current total assets.
         total_assets_for_risk = cash_usd + position_usd + unrealized_pnl
-        risk_basis = total_assets_for_risk if (cash_usd < 0.01 and position_usd > 0.01) else cash_usd
+        risk_basis = initial_capital if initial_capital > 0 else total_assets_for_risk
         
         target_gross_limit = risk_basis * max_position_pct
         max_order_notional = risk_basis * max_single_order_pct
-        risk_cap_notional = min(max_order_notional, hard_max_trade_usd)
+        risk_cap_notional = (
+            min(max_order_notional, hard_max_trade_usd)
+            if hard_max_trade_usd is not None
+            else max_order_notional
+        )
 
         if action == "HOLD":
             approved_notional = 0.0
             risk_status = "blocked: hold"
         elif action == "BUY":
             available_for_buy = max(0.0, target_gross_limit - position_usd)
-            approved_notional = min(requested_notional_usd, risk_cap_notional, available_for_buy)
+            # Size BUY to 10% of total capital baseline, not trader-requested tiny notional.
+            approved_notional = min(risk_cap_notional, available_for_buy)
             risk_status = "allowed" if approved_notional > 0 else "blocked: position_limit"
         else:  # SELL
             # Always allow sells for risk management
             max_sellable = position_usd if position_usd > 0 else 0.0
-            approved_notional = min(requested_notional_usd, risk_cap_notional, max_sellable)
+            approved_notional = min(risk_cap_notional, max_sellable)
             risk_status = "allowed" if approved_notional > 0 else "blocked: no_position"
 
         approved_amount_usd_scaled = int(round(approved_notional * 100))

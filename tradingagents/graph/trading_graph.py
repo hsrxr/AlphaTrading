@@ -194,6 +194,7 @@ class TradingAgentsGraph:
             self.on_chain_integrator = create_on_chain_integrator(
                 enable_simulation=self.config.get("on_chain_simulation_enabled", True),
                 submit_hold_decisions=self.config.get("on_chain_submit_hold_decisions", False),
+                auto_approve_on_timeout=self.config.get("on_chain_auto_approve_without_feedback", True),
             )
             if self.on_chain_integrator:
                 logger.info("On-chain integration enabled")
@@ -649,6 +650,17 @@ class TradingAgentsGraph:
                     )
                 else:
                     logger.error(f"Failed to record rejection: {outcome.message}")
+
+            elif submission_result.trade_approved and (submission_result.metadata or {}).get("auto_approved_on_timeout"):
+                logger.warning(
+                    "Trade treated as approved due to feedback timeout. "
+                    "Skipping portfolio execution-price application because no approval event payload is available."
+                )
+                self._record_trade_outcome_in_memory(
+                    decision_state=final_state,
+                    approval_status="approved",
+                    trade_date=trade_date,
+                )
             
             else:
                 logger.warning("No approval/rejection feedback available")

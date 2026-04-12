@@ -51,18 +51,12 @@ def create_context_merge_node():
                 if initial_capital > 0 else 0
             )
             
-            # For risk calculations, use total_assets if cash is depleted but positions exist
-            # This allows trading from held positions
-            risk_basis = total_assets if (cash_usd < 0.01 and position_usd > 0.01) else cash_usd
-            
+            risk_basis = total_assets if total_assets > 0 else portfolio_manager.get_initial_capital()
+
             position_utilization = (
-                (position_usd / (risk_basis * 0.40) * 100)
+                (position_usd / max(risk_basis, 1e-9) * 100)
                 if risk_basis > 0 else 0
             )
-            
-            position_limit = risk_basis * 0.40
-            order_limit = risk_basis * 0.10
-            remaining_position_capacity = max(0, position_limit - position_usd)
             
             # Format global context for injection into prompts
             global_portfolio_context = (
@@ -73,14 +67,11 @@ def create_context_merge_node():
                 f"Unrealized PnL: ${unrealized_pnl:+.2f} ({drawdown_pct:+.2f}% from baseline)\n"
                 f"Realized PnL (cumulative): ${realized_pnl:+.2f}\n"
                 f"\n=== RISK CONSTRAINTS ===\n"
-                f"Maximum single order: ${order_limit:.2f} (10% of cash)\n"
-                f"Maximum total position: ${position_limit:.2f} (20% of cash)\n"
+                f"Sizing and hard limits are enforced by RiskEngine at execution time.\n"
+                f"Trader should propose intent by signal conviction, not by local cash math.\n"
                 f"Current position utilization: {position_utilization:.1f}%\n"
-                f"Remaining position capacity: ${remaining_position_capacity:.2f}\n"
                 f"Drawdown from baseline: {drawdown_pct:+.2f}%\n"
                 f"\n=== DECISION CONSTRAINTS ===\n"
-                f"DO NOT recommend positions exceeding ${order_limit:.2f} per trade\n"
-                f"DO NOT let total position exceed ${position_limit:.2f}\n"
                 f"PRIORITIZE RISK MANAGEMENT if drawdown approaches -5%\n"
                 f"BE CONSERVATIVE if position utilization > 80%"
             )
@@ -105,8 +96,8 @@ def create_context_merge_node():
             if "global_portfolio_context" not in state:
                 state["global_portfolio_context"] = (
                     "Portfolio context unavailable. Proceed with standard risk limits.\n"
-                    "Maximum order size: 10% of configured cash\n"
-                    "Maximum position: 20% of configured cash"
+                    "RiskEngine is the only source of executable sizing limits.\n"
+                    "Trader output should use conviction-based USD cents sizing."
                 )
 
         return state

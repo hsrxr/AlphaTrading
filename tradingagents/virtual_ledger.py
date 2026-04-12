@@ -104,6 +104,7 @@ class VirtualLedger:
         intent_hash: str,
         confidence: float = 0.5,
         notes: str = "",
+        reference_price: Optional[float] = None,
     ) -> str:
         """Record a trade submission and reserve balance immediately.
 
@@ -115,6 +116,7 @@ class VirtualLedger:
             intent_hash: RiskRouter intent hash
             confidence: Trade confidence (0-1)
             notes: Additional notes
+            reference_price: Reference price at submission time (for mock execution)
 
         Returns:
             Trade ID for tracking
@@ -138,6 +140,7 @@ class VirtualLedger:
             "intent_hash": intent_hash,
             "confidence": confidence,
             "notes": notes,
+            "reference_price": reference_price,  # Mock execution price if auto-approved
             "status": "submitted",  # submitted -> approved/rejected -> closed
             "submitted_at": datetime.now(timezone.utc).isoformat(),
             "reserved_balance": amount_usd,  # Reserve immediately on submission
@@ -145,6 +148,7 @@ class VirtualLedger:
             "rejected_at": None,
             "rejection_reason": None,
             "closed_at": None,
+            "execution_price": None,  # Set when approved
             "realized_pnl": None,
         }
         
@@ -176,10 +180,11 @@ class VirtualLedger:
         
         Note: Balance is already reserved at submission time, so this just
         updates the trade status to indicate RiskRouter approval.
+        If execution_price is not provided, uses reference_price from submission.
 
         Args:
             intent_hash: RiskRouter intent hash
-            execution_price: Optional execution price
+            execution_price: Optional execution price (if not provided, uses reference_price)
 
         Returns:
             True if trade was found and approved, False otherwise
@@ -189,15 +194,30 @@ class VirtualLedger:
                 # Balance already reserved at submission, just mark as approved
                 trade["status"] = "approved"
                 trade["approved_at"] = datetime.now(timezone.utc).isoformat()
-                trade["execution_price"] = execution_price
+                
+                # Use provided execution_price, or fallback to reference_price
+                final_execution_price = execution_price or trade.get("reference_price")
+                trade["execution_price"] = final_execution_price
+                
+                # Calculate realized PnL if we have both amount and price
+                if final_execution_price and trade.get("amount_usd", 0) > 0:
+                    trade["realized_pnl"] = (trade["amount_usd"] * final_execution_price) / 100.0 if final_execution_price < 1 else trade["amount_usd"]
+                    logger.info(
+                        "Trade approved with PnL calculation: hash=%s, price=$%.4f, amount=$%.2f, pnl=$%.2f",
+                        intent_hash[:16],
+                        final_execution_price if final_execution_price >= 1 else final_execution_price * 100,
+                        trade["amount_usd"],
+                        trade.get("realized_pnl", 0),
+                    )
                 
                 self.account["total_trades_approved"] = self.account.get("total_trades_approved", 0) + 1
                 self._persist()
                 
                 logger.info(
-                    "Trade approved: hash=%s, amount=$%.2f, balance=$%.2f",
+                    "Trade approved: hash=%s, amount=$%.2f, execution_price=$%.4f, balance=$%.2f",
                     intent_hash[:16],
                     trade["amount_usd"],
+                    final_execution_price if final_execution_price else 0.0,
                     self.get_balance(),
                 )
                 return True

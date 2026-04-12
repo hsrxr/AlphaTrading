@@ -100,6 +100,7 @@ def main() -> None:
     config["trigger_poll_interval_seconds"] = 5
     config["trigger_aggregation_window_seconds"] = 45
     config["trigger_cooldown_seconds"] = 150
+    config["use_trader_v2"] = True
 
     graph = TradingAgentsGraph(
         debug=True,

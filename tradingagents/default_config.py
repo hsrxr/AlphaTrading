@@ -40,6 +40,7 @@ DEFAULT_CONFIG = {
     "use_trader_v2": True,             # False=legacy trader (BUY/SELL/HOLD), True=v2 trader (BUY/SELL only)
     "enable_on_chain_submission": False,      # Whether to submit trades on-chain (requires additional config)
     "on_chain_submit_hold_decisions": False,  # Whether HOLD decisions should still submit TradeIntent to RiskRouter
+    "on_chain_auto_approve_without_feedback": True,  # Treat feedback-timeout trades as locally approved
 
     # Outer trigger runtime settings
     "enable_trigger_runtime": False,
