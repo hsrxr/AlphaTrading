@@ -8,6 +8,7 @@ import { useDashboardStore } from "@/store/dashboardStore";
 import type { RuntimeEvent } from "@/types/trading";
 
 const analystActors = ["Market Analyst", "News Analyst", "Quant Analyst"];
+const analystActorSet = new Set(analystActors);
 
 const analystBorderMap: Record<string, string> = {
   "Market Analyst": "border-cyan-500/30",
@@ -21,6 +22,8 @@ const parallelResearchActors = ["Bull Researcher", "Bear Researcher"];
 const serialDownstreamOrder = ["Trader", "Risk Engine", "System", "Unknown"];
 
 const eventDisplayAllowlist = new Set(["llm_call", "llm_token", "tool_call", "tool_start", "tool_end", "node_start", "node_end", "error"]);
+
+const isAnalystToken = (item: RuntimeEvent): boolean => item.event === "llm_token" && analystActorSet.has(item.actor);
 
 type ConversationSession = {
   id: string;
@@ -95,6 +98,60 @@ function reassignToolEvents(events: RuntimeEvent[]): RuntimeEvent[] {
     }
     return event;
   });
+}
+
+function extractFinalTradeDecision(raw: Record<string, unknown> | undefined): string {
+  if (!raw) {
+    return "";
+  }
+
+  const direct = raw.final_trade_decision;
+  return typeof direct === "string" ? direct : "";
+}
+
+function expandRiskEngineDecisionEvents(events: RuntimeEvent[]): RuntimeEvent[] {
+  const expanded: RuntimeEvent[] = [];
+
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    expanded.push(event);
+
+    if (event.event !== "llm_call" || event.actor !== "Trader") {
+      continue;
+    }
+
+    const finalDecision = extractFinalTradeDecision(event.raw as Record<string, unknown> | undefined);
+    if (!finalDecision) {
+      continue;
+    }
+
+    const nextEvent = events[index + 1];
+    if (
+      nextEvent &&
+      nextEvent.event === "llm_call" &&
+      nextEvent.actor === "Risk Engine" &&
+      nextEvent.timestamp === event.timestamp &&
+      nextEvent.detail === finalDecision
+    ) {
+      continue;
+    }
+
+    expanded.push({
+      id: `${event.id}-risk-fallback`,
+      timestamp: event.timestamp,
+      event: "llm_call",
+      actor: "Risk Engine",
+      detail: finalDecision,
+      raw: {
+        event: "llm_call",
+        analyst: "Risk Engine",
+        response: finalDecision,
+        synthetic: true,
+      },
+    });
+  }
+
+  return expanded;
 }
 
 function eventLabel(eventName: string): string {
@@ -446,7 +503,10 @@ export function AgentProcessBoard(): React.JSX.Element {
   const events = useDashboardStore((state) => state.runtimeEvents);
 
   const displayEvents = useMemo(
-    () => reassignToolEvents(events).filter((item) => eventDisplayAllowlist.has(item.event)),
+    () =>
+      expandRiskEngineDecisionEvents(reassignToolEvents(events)).filter(
+        (item) => eventDisplayAllowlist.has(item.event) && !isAnalystToken(item),
+      ),
     [events],
   );
 
@@ -468,6 +528,13 @@ export function AgentProcessBoard(): React.JSX.Element {
         item.actor === actor && ["llm_call", "llm_token", "tool_call", "tool_start", "tool_end", "node_start", "node_end", "error"].includes(item.event),
     ),
   );
+
+  const riskEngineRows = displayEvents.filter(
+    (item) =>
+      item.actor === "Risk Engine" && ["llm_call", "llm_token", "tool_call", "tool_start", "tool_end", "node_start", "node_end", "error"].includes(item.event),
+  );
+
+  const shouldShowRiskEngine = riskEngineRows.length > 0 || displayEvents.some((item) => item.actor === "Trader" && extractFinalTradeDecision(item.raw as Record<string, unknown> | undefined) !== "");
 
   return (
     <Card className="h-full">
@@ -530,22 +597,32 @@ export function AgentProcessBoard(): React.JSX.Element {
             <section>
               <p className="mb-2 text-[11px] uppercase tracking-[0.14em] text-zinc-400">Sequential Decision Chain</p>
               <div className="space-y-3">
-                {downstreamActors.map((actor) => {
-                  const rows = displayEvents.filter(
-                    (item) => item.actor === actor && ["llm_call", "llm_token", "tool_call", "tool_start", "tool_end", "node_start", "node_end", "error"].includes(item.event),
-                  );
-                  const watchKey = `${actor}-${rows.length}-${rows.at(-1)?.id ?? "none"}-${rows
-                    .filter((row) => row.event === "llm_token")
-                    .reduce((sum, row) => sum + row.detail.length, 0)}`;
-                  return (
-                    <article key={actor} className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950/70 p-2">
-                      <h3 className="text-xs font-semibold text-zinc-100">{actor}</h3>
-                      <AutoFollowScrollArea className="mt-2 max-h-[440px] min-w-0 pr-1" watchKey={watchKey}>
-                        <ActorConversation actor={actor} rows={rows} />
-                      </AutoFollowScrollArea>
-                    </article>
-                  );
-                })}
+                {downstreamActors
+                  .filter((actor) => actor !== "Risk Engine")
+                  .map((actor) => {
+                    const rows = displayEvents.filter(
+                      (item) => item.actor === actor && ["llm_call", "llm_token", "tool_call", "tool_start", "tool_end", "node_start", "node_end", "error"].includes(item.event),
+                    );
+                    const watchKey = `${actor}-${rows.length}-${rows.at(-1)?.id ?? "none"}-${rows
+                      .filter((row) => row.event === "llm_token")
+                      .reduce((sum, row) => sum + row.detail.length, 0)}`;
+                    return (
+                      <article key={actor} className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950/70 p-2">
+                        <h3 className="text-xs font-semibold text-zinc-100">{actor}</h3>
+                        <AutoFollowScrollArea className="mt-2 max-h-[440px] min-w-0 pr-1" watchKey={watchKey}>
+                          <ActorConversation actor={actor} rows={rows} />
+                        </AutoFollowScrollArea>
+                      </article>
+                    );
+                  })}
+                {shouldShowRiskEngine ? (
+                  <article className="min-w-0 rounded-lg border border-amber-500/50 bg-amber-950/20 p-2">
+                    <h3 className="text-xs font-semibold text-zinc-100">Risk Engine</h3>
+                    <AutoFollowScrollArea className="mt-2 max-h-[440px] min-w-0 pr-1" watchKey={`risk-engine-${riskEngineRows.length}-${riskEngineRows.at(-1)?.id ?? "none"}`}>
+                      <ActorConversation actor="Risk Engine" rows={riskEngineRows} />
+                    </AutoFollowScrollArea>
+                  </article>
+                ) : null}
               </div>
             </section>
           </div>

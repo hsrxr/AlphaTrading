@@ -1,4 +1,4 @@
-const githubUrl = import.meta.env.VITE_GITHUB_URL ?? "https://github.com/";
+const githubUrl = import.meta.env.VITE_GITHUB_URL ?? "https://github.com/hsrxr/AlphaTrading";
 const pitchVideoUrl = import.meta.env.VITE_PITCH_VIDEO_URL ?? "https://www.youtube.com/";
 
 export function HackathonBanner(): React.JSX.Element {

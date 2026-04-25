@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { mockDashboardSnapshot } from "@/data/mockData";
-import { loadHistoricalExecutionTrailFromJson, loadRuntimeEventsFromJsonl } from "@/data/traceReplay";
+import {
+  injectFinalTradeDecisionIntoEvents,
+  loadFinalTradeDecisionFromFullStates,
+  loadHistoricalExecutionTrailFromJson,
+  loadRuntimeEventsFromJsonl,
+} from "@/data/traceReplay";
 import { getLivePollIntervalMs, getReplayDelayMs, refreshStreamSpeedFromApi } from "@/lib/streamSpeed";
 import type {
   RuntimeEvent,
@@ -32,11 +37,77 @@ interface DashboardState {
 
 const API_BASE = import.meta.env.VITE_RUNTIME_API_BASE ?? "http://127.0.0.1:8765";
 const MOCK_TRACE_PATH = import.meta.env.VITE_MOCK_TRACE_PATH ?? "/mock/full_trace_time.jsonl";
+const MOCK_FULL_STATES_PATH =
+  import.meta.env.VITE_MOCK_FULL_STATES_PATH ?? "/mock/full_states_log_2026-04-08 12-12-21.588002+00-00.json";
 const MOCK_LEDGER_PATH = import.meta.env.VITE_MOCK_LEDGER_PATH ?? "/mock/virtual_ledger.json";
 const MOCK_AGENT_INFO_PATH = import.meta.env.VITE_MOCK_AGENT_INFO_PATH ?? "/mock/agent-id.json";
 const REQUEST_TIMEOUT_MS = 1400;
 const BASE_MOCK_TOKEN_DELAY_MS = 4;
 const BASE_MOCK_EVENT_DELAY_MS = 60;
+const ANALYST_ACTORS = new Set(["Market Analyst", "News Analyst", "Quant Analyst"]);
+const RESEARCHER_ACTORS = new Set(["Bull Researcher", "Bear Researcher"]);
+
+const isSkippableAnalystToken = (event: RuntimeEvent): boolean =>
+  event.event === "llm_token" && ANALYST_ACTORS.has(event.actor);
+
+const getMockReplayStartCursor = (events: RuntimeEvent[]): number => {
+  const researcherTokenActors: string[] = [];
+  const seenActors = new Set<string>();
+
+  for (const event of events) {
+    if (event.event !== "llm_token" || !RESEARCHER_ACTORS.has(event.actor)) {
+      continue;
+    }
+    if (seenActors.has(event.actor)) {
+      continue;
+    }
+    seenActors.add(event.actor);
+    researcherTokenActors.push(event.actor);
+    if (researcherTokenActors.length === 2) {
+      break;
+    }
+  }
+
+  const secondResearcher = researcherTokenActors[1];
+  if (!secondResearcher) {
+    return 0;
+  }
+
+  const firstTokenIndex = events.findIndex(
+    (event) => event.actor === secondResearcher && event.event === "llm_token",
+  );
+  if (firstTokenIndex < 0) {
+    return 0;
+  }
+
+  let llmCallIndex = -1;
+  for (let i = firstTokenIndex + 1; i < events.length; i += 1) {
+    const event = events[i];
+    if (event.actor === secondResearcher && event.event === "llm_call") {
+      llmCallIndex = i;
+      break;
+    }
+  }
+
+  if (llmCallIndex < 0) {
+    return firstTokenIndex;
+  }
+
+  const tokenIndexes: number[] = [];
+  for (let i = firstTokenIndex; i < llmCallIndex; i += 1) {
+    const event = events[i];
+    if (event.actor === secondResearcher && event.event === "llm_token") {
+      tokenIndexes.push(i);
+    }
+  }
+
+  if (tokenIndexes.length === 0) {
+    return firstTokenIndex;
+  }
+
+  const nearEndTokenIndex = tokenIndexes[Math.max(0, tokenIndexes.length - 2)];
+  return nearEndTokenIndex;
+};
 
 const createIdleSnapshot = (pair?: string) => ({
   ...mockDashboardSnapshot,
@@ -97,13 +168,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
     await refreshStreamSpeedFromApi(API_BASE);
 
-    const [traceReplay, executionTrail] = await Promise.all([
+    const [traceReplay, executionTrail, finalTradeDecision] = await Promise.all([
       loadRuntimeEventsFromJsonl(MOCK_TRACE_PATH),
       loadHistoricalExecutionTrailFromJson(MOCK_LEDGER_PATH, MOCK_AGENT_INFO_PATH),
+      loadFinalTradeDecisionFromFullStates(MOCK_FULL_STATES_PATH),
     ]);
 
     if (traceReplay) {
-      mockReplayEvents = traceReplay.events;
+      mockReplayEvents = injectFinalTradeDecisionIntoEvents(traceReplay.events, finalTradeDecision);
       mockReplayPair = traceReplay.pair;
     }
 
@@ -186,15 +258,18 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     if (get().runtimeMode === "mock") {
       const replayEvents = mockReplayEvents;
       const replayRunId = `mock-${Date.now()}`;
-      let cursor = 0;
+      let cursor = getMockReplayStartCursor(replayEvents);
+      const seededEvents = replayEvents.slice(0, cursor).filter((event) => event.event !== "llm_token");
 
       set({
+        runtimeEvents: seededEvents,
         runId: replayRunId,
         runtimeDetail: `Mock replay is running from ${MOCK_TRACE_PATH}`,
         baseSnapshot: {
           ...get().baseSnapshot,
           pair: mockReplayPair,
         },
+        eventOffset: cursor,
       });
 
       const stepReplay = () => {
@@ -212,6 +287,16 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
             trades: [],
             runtimeDetail: `Mock replay completed from ${MOCK_TRACE_PATH}`,
           });
+          return;
+        }
+
+        if (isSkippableAnalystToken(nextEvent)) {
+          while (cursor < replayEvents.length && isSkippableAnalystToken(replayEvents[cursor])) {
+            cursor += 1;
+          }
+
+          set({ eventOffset: cursor });
+          mockReplayTimer = window.setTimeout(stepReplay, 1);
           return;
         }
 

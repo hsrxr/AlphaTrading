@@ -101,7 +101,7 @@ function App(): React.JSX.Element {
             </section>
           </div>
 
-          <aside className="pointer-events-none fixed bottom-4 right-4 z-40 h-[230px] w-[260px] animate-riseIn sm:h-[250px] sm:w-[280px]">
+          <aside className="pointer-events-none fixed bottom-4 left-4 z-40 h-[230px] w-[260px] animate-riseIn sm:h-[250px] sm:w-[280px]">
             <RunTimeline compact floating />
           </aside>
         </main>

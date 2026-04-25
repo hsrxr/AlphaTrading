@@ -5,6 +5,10 @@ type TraceLoadResult = {
   events: RuntimeEvent[];
 };
 
+type FullStateSnapshot = {
+  final_trade_decision?: unknown;
+};
+
 type HistoricalLedger = {
   account?: {
     agent_id?: number;
@@ -113,6 +117,14 @@ const getDetail = (record: Record<string, unknown>): string => {
   }
 
   return JSON.stringify(record).slice(0, 600);
+};
+
+const normalizeMockTraceActor = (actor: string, path: string): string => {
+  if (path.includes("full_trace_time.jsonl") && actor === "Risk Engine") {
+    return "Trader";
+  }
+
+  return actor;
 };
 
 const formatTrailStatus = (trade: Record<string, unknown>): ExecutionTrailRecord["status"] => {
@@ -257,14 +269,33 @@ export async function loadRuntimeEventsFromJsonl(path: string): Promise<TraceLoa
         }
       }
 
+      const actor = normalizeMockTraceActor(getActor(record), path);
+      const finalTradeDecision = typeof record.final_trade_decision === "string" ? record.final_trade_decision : null;
+
       events.push({
         id: `trace-${index + 1}`,
         timestamp: toIsoTimestamp(record.timestamp),
         event: eventName as RuntimeEvent["event"],
-        actor: getActor(record),
+        actor,
         detail: getDetail(record),
         raw: record,
       });
+
+      if (eventName === "llm_call" && actor === "Trader" && finalTradeDecision) {
+        events.push({
+          id: `trace-${index + 1}-risk`,
+          timestamp: toIsoTimestamp(record.timestamp),
+          event: "llm_call",
+          actor: "Risk Engine",
+          detail: finalTradeDecision,
+          raw: {
+            event: "llm_call",
+            analyst: "Risk Engine",
+            response: finalTradeDecision,
+            synthetic: true,
+          },
+        });
+      }
     });
 
     if (events.length === 0) {
@@ -275,4 +306,76 @@ export async function loadRuntimeEventsFromJsonl(path: string): Promise<TraceLoa
   } catch {
     return null;
   }
+}
+
+export async function loadFinalTradeDecisionFromFullStates(path: string): Promise<string | null> {
+  try {
+    const response = await fetch(path, { cache: "no-cache" });
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as Record<string, FullStateSnapshot>;
+    const firstState = Object.values(payload)[0];
+    if (!firstState) {
+      return null;
+    }
+
+    return typeof firstState.final_trade_decision === "string" ? firstState.final_trade_decision : null;
+  } catch {
+    return null;
+  }
+}
+
+export function injectFinalTradeDecisionIntoEvents(
+  events: RuntimeEvent[],
+  finalTradeDecision: string | null,
+): RuntimeEvent[] {
+  if (!finalTradeDecision || finalTradeDecision.trim().length === 0) {
+    return events;
+  }
+
+  const traderCallIndex = [...events]
+    .map((event, index) => ({ event, index }))
+    .filter((item) => item.event.event === "llm_call" && item.event.actor === "Trader")
+    .at(-1)?.index;
+
+  if (traderCallIndex === undefined) {
+    return events;
+  }
+
+  const updated = [...events];
+  const traderEvent = updated[traderCallIndex];
+  updated[traderCallIndex] = {
+    ...traderEvent,
+    raw: {
+      ...((traderEvent.raw as Record<string, unknown> | undefined) ?? {}),
+      final_trade_decision: finalTradeDecision,
+    },
+  };
+
+  const alreadyHasRiskDecision = updated.some(
+    (event) => event.actor === "Risk Engine" && event.event === "llm_call" && event.detail === finalTradeDecision,
+  );
+
+  if (alreadyHasRiskDecision) {
+    return updated;
+  }
+
+  updated.splice(traderCallIndex + 1, 0, {
+    id: `${traderEvent.id}-risk-from-full-state`,
+    timestamp: traderEvent.timestamp,
+    event: "llm_call",
+    actor: "Risk Engine",
+    detail: finalTradeDecision,
+    raw: {
+      event: "llm_call",
+      analyst: "Risk Engine",
+      response: finalTradeDecision,
+      synthetic: true,
+      source: "full_states_log",
+    },
+  });
+
+  return updated;
 }

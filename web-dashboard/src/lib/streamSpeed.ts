@@ -2,7 +2,7 @@ let speedMultiplier = 8;
 
 const clampMultiplier = (value: unknown): number => {
   if (typeof value !== "number" || Number.isNaN(value) || !Number.isFinite(value)) {
-    return 1;
+    return speedMultiplier;
   }
   return Math.min(64, Math.max(0.25, value));
 };
